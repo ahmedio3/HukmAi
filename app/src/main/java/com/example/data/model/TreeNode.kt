@@ -2,11 +2,10 @@ package com.example.data.model
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
-import androidx.room.PrimaryKey
 
-@Entity(tableName = "tree_nodes")
+@Entity(tableName = "tree_nodes", primaryKeys = ["id"])
 data class TreeNode(
-    @PrimaryKey val id: Int?,
+    @ColumnInfo(name = "id") val id: Int?,
     @ColumnInfo(name = "title") val title: String,
     @ColumnInfo(name = "parent_id") val parentId: Int?,
     @ColumnInfo(name = "level") val level: Int,

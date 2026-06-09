@@ -2,11 +2,10 @@ package com.example.data.model
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
-import androidx.room.PrimaryKey
 
-@Entity(tableName = "articles")
+@Entity(tableName = "articles", primaryKeys = ["id"])
 data class Article(
-    @PrimaryKey val id: Int?,
+    @ColumnInfo(name = "id") val id: Int?,
     @ColumnInfo(name = "title") val title: String,
     @ColumnInfo(name = "html") val html: String?,
     @ColumnInfo(name = "text") val text: String?
