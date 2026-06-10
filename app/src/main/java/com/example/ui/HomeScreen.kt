@@ -810,184 +810,192 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
     var questionText by remember { mutableStateOf("") }
     val aiProgress by viewModel.aiProgress.collectAsStateWithLifecycle()
     val chatMessages by viewModel.chatMessages.collectAsStateWithLifecycle()
+    val streamingText by viewModel.streamingText.collectAsStateWithLifecycle()
     var showSourcesSheet by remember { mutableStateOf(false) }
     var sourcesForSheet by remember { mutableStateOf<List<com.example.data.model.Article>>(emptyList()) }
     var sourceLoadError by remember { mutableStateOf(false) }
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val listState = rememberLazyListState()
     val isAiThinking = aiProgress !is com.example.data.api.AiProgress.Idle
-    val streamingText = remember(aiProgress) {
-        if (aiProgress is com.example.data.api.AiProgress.Streaming)
-            (aiProgress as com.example.data.api.AiProgress.Streaming).partialText
-        else null
-    }
+    val isStreaming = streamingText != null
     val coroutineScope = rememberCoroutineScope()
 
-    // Auto-scroll to bottom when new messages arrive or progress changes
-    LaunchedEffect(chatMessages.size, aiProgress) {
-        if (chatMessages.isNotEmpty()) {
-            delay(100)
-            listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
+    // Make status bar icons dark for white background
+    val view = androidx.compose.ui.platform.LocalView.current
+    LaunchedEffect(Unit) {
+        @Suppress("DEPRECATION")
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            view.systemUiVisibility = view.systemUiVisibility or
+                android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
         }
     }
 
-    Column(
+    // Auto-scroll to bottom when new messages arrive or streaming text changes
+    LaunchedEffect(chatMessages.size, streamingText) {
+        delay(50)
+        val count = listState.layoutInfo.totalItemsCount
+        if (count > 0) {
+            listState.scrollToItem(count - 1)
+        }
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(IosBackground)
+            .background(IosSurface) // White background extends behind status bar
+            .imePadding()
     ) {
-        // iOS-style nav bar with title
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(IosSurface)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "رجوع",
-                tint = Color(0xFF007AFF),
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Status bar spacer (white to blend with header)
+            Spacer(
                 modifier = Modifier
-                    .size(24.dp)
-                    .clickable { }
-                    .padding(4.dp)
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = "المفتي الذكي",
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = IosTextPrimary
-                ),
-                modifier = Modifier.weight(1f)
-            )
-            if (chatMessages.isNotEmpty()) {
-                IconButton(onClick = { viewModel.clearChat() }) {
-                    Icon(Icons.Default.DeleteSweep, contentDescription = "مسح المحادثة", tint = Color(0xFF007AFF))
-                }
-            }
-        }
-        HorizontalDivider(color = IosSeparator, thickness = 0.5.dp)
-
-        // Messages list
-        if (chatMessages.isEmpty() && !isAiThinking) {
-            // Empty state
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        tint = Color(0xFF007AFF),
-                        modifier = Modifier.size(64.dp)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "اسأل المفتي الذكي أي سؤال فقهي،\nوسيجيبك بالاعتماد على الموسوعة الفقهية فقط.",
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.bodyLarge.copy(color = IosTextSecondary)
-                    )
-                }
-            }
-        } else {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .weight(1f)
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp),
-                contentPadding = PaddingValues(vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Chat messages
-                itemsIndexed(chatMessages) { index, msg ->
-                    if (msg.role == "user") {
-                        UserChatBubble(
-                            message = msg.content,
-                            timestamp = msg.timestamp
-                        )
-                    } else {
-                        val isError = msg.content.startsWith("⚠️")
-                        AiChatMessage(
-                            message = msg.content,
-                            sourcesJson = if (!isError) msg.sourcesJson else null,
-                            timestamp = msg.timestamp,
-                            isError = isError,
-                            onViewSources = {
-                                coroutineScope.launch {
-                                    val articles = viewModel.loadSourcesFromJson(msg.sourcesJson)
-                                    if (articles.isNotEmpty()) {
-                                        sourcesForSheet = articles
-                                        showSourcesSheet = true
-                                    }
-                                }
-                            },
-                            onRetry = { viewModel.retryLastQuestion() }
-                        )
-                    }
-                }
+                    .windowInsetsTopHeight(WindowInsets.statusBars)
+                    .background(IosSurface)
+            )
 
-                // Streaming text (shows while AI is generating)
-                if (streamingText != null) {
-                    item {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            // Show the partial response
-                            val formattedStream = remember(streamingText) { parseAiResponse(streamingText) }
-                            Text(
-                                text = formattedStream,
-                                color = IosTextPrimary,
-                                style = MaterialTheme.typography.bodyLarge.copy(
-                                    fontSize = 16.sp,
-                                    lineHeight = 28.sp,
-                                    textAlign = TextAlign.Justify
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 4.dp)
-                            )
-                            // Blinking cursor indicator
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "▍",
-                                color = Color(0xFF007AFF),
-                                fontSize = 14.sp,
-                                modifier = Modifier.padding(start = 4.dp)
-                            )
-                        }
-                    }
-                } else if (isAiThinking) {
-                    // Thinking indicator while AI is processing (before streaming starts)
-                    item {
-                        AiThinkingIndicator(progress = aiProgress)
-                    }
-                }
-            }
-        }
-
-        // Input bar with send button on RIGHT
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(IosSurface)
-                .imePadding()
-                .padding(bottom = 2.dp)
-        ) {
+            // iOS-style nav bar with title (no back button)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                    .background(IosSurface)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "المفتي الذكي",
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = IosTextPrimary
+                    ),
+                    modifier = Modifier.weight(1f)
+                )
+                if (chatMessages.isNotEmpty()) {
+                    IconButton(onClick = { viewModel.clearChat() }) {
+                        Icon(Icons.Default.DeleteSweep, contentDescription = "مسح المحادثة", tint = Color(0xFF007AFF))
+                    }
+                }
+            }
+            HorizontalDivider(color = IosSeparator, thickness = 0.5.dp)
+
+            // Messages list area (takes remaining space)
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                if (chatMessages.isEmpty() && !isAiThinking && streamingText == null) {
+                    // Empty state
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                tint = Color(0xFF007AFF),
+                                modifier = Modifier.size(64.dp)
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "اسأل المفتي الذكي أي سؤال فقهي،\nوسيجيبك بالاعتماد على الموسوعة الفقهية فقط.",
+                                textAlign = TextAlign.Center,
+                                style = MaterialTheme.typography.bodyLarge.copy(color = IosTextSecondary)
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 12.dp),
+                        contentPadding = PaddingValues(vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Chat messages
+                        itemsIndexed(chatMessages) { index, msg ->
+                            if (msg.role == "user") {
+                                UserChatBubble(
+                                    message = msg.content,
+                                    timestamp = msg.timestamp
+                                )
+                            } else {
+                                val isError = msg.content.startsWith("⚠️")
+                                AiChatMessage(
+                                    message = msg.content,
+                                    sourcesJson = if (!isError) msg.sourcesJson else null,
+                                    timestamp = msg.timestamp,
+                                    isError = isError,
+                                    onViewSources = {
+                                        coroutineScope.launch {
+                                            val articles = viewModel.loadSourcesFromJson(msg.sourcesJson)
+                                            if (articles.isNotEmpty()) {
+                                                sourcesForSheet = articles
+                                                showSourcesSheet = true
+                                            }
+                                        }
+                                    },
+                                    onRetry = { viewModel.retryLastQuestion() }
+                                )
+                            }
+                        }
+
+                        // Streaming message (while AI is typing, with blinking cursor)
+                        if (streamingText != null) {
+                            item(key = "__streaming__") {
+                                StreamingMessage(text = streamingText!!)
+                            }
+                        }
+
+                        // Thinking indicator (before streaming starts)
+                        if (isAiThinking && streamingText == null) {
+                            item(key = "__thinking__") {
+                                AiThinkingIndicator(progress = aiProgress)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Floating input bar (no background box, just the row)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .navigationBarsPadding(),
                 verticalAlignment = Alignment.Bottom
             ) {
-                // Text input
+                // Send button first (appears on RIGHT in RTL)
+                val canSend = questionText.isNotBlank() && !isAiThinking
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(
+                            if (canSend) Color(0xFF007AFF) else Color(0xFFC7C7CC),
+                            shape = CircleShape
+                        )
+                        .clickable(enabled = canSend) {
+                            focusManager.clearFocus()
+                            val text = questionText
+                            questionText = ""
+                            viewModel.submitAiQuestion(text)
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "إرسال",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Text input (floating with distinct visible background)
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .background(Color(0xFFE2E2E7), shape = RoundedCornerShape(20.dp))
+                        .background(Color.White, RoundedCornerShape(20.dp))
+                        .border(1.dp, Color(0xFFD1D1D6), RoundedCornerShape(20.dp))
                         .padding(horizontal = 16.dp, vertical = 2.dp)
                 ) {
                     androidx.compose.foundation.text.BasicTextField(
@@ -1007,32 +1015,6 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                             }
                             innerTextField()
                         }
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                // Send button on RIGHT
-                val canSend = questionText.isNotBlank() && !isAiThinking
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .background(
-                            if (canSend) Color(0xFF007AFF) else Color(0xFFC7C7CC),
-                            shape = CircleShape
-                        )
-                        .clickable(enabled = canSend) {
-                            focusManager.clearFocus()
-                            viewModel.submitAiQuestion(questionText)
-                            questionText = ""
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "إرسال",
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
@@ -1141,6 +1123,50 @@ fun UserChatBubble(message: String, timestamp: Long) {
             fontSize = 11.sp,
             modifier = Modifier.padding(start = 4.dp, top = 2.dp)
         )
+    }
+}
+
+@Composable
+fun StreamingMessage(text: String) {
+    val infiniteTransition = rememberInfiniteTransition(label = "cursor")
+    val cursorVisible by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 500),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "cursorBlink"
+    )
+    val formattedText = remember(text) { parseAiResponse(text) }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.Start
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Text(
+                text = formattedText,
+                color = IosTextPrimary,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontSize = 16.sp,
+                    lineHeight = 28.sp,
+                    textAlign = TextAlign.Justify
+                ),
+                modifier = Modifier.weight(1f)
+            )
+            // Blinking cursor
+            Text(
+                text = "|",
+                color = Color(0xFF007AFF),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(start = 2.dp).alpha(if (cursorVisible > 0.5f) 1f else 0f)
+            )
+        }
     }
 }
 

@@ -1,9 +1,12 @@
 package com.example.data.api
 
+import okhttp3.ResponseBody
+import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
+import retrofit2.http.Streaming
 
 interface GeminiApiService {
     @POST("v1beta/models/{model}:generateContent")
@@ -12,4 +15,12 @@ interface GeminiApiService {
         @Query("key") apiKey: String,
         @Body request: GenerateContentRequest
     ): GenerateContentResponse
+
+    @Streaming
+    @POST("v1beta/models/{model}:streamGenerateContent")
+    suspend fun streamGenerateContent(
+        @Path("model") model: String,
+        @Query("key") apiKey: String,
+        @Body request: GenerateContentRequest
+    ): Response<ResponseBody>
 }

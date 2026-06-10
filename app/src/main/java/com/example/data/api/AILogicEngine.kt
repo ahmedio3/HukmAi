@@ -9,8 +9,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
 
 sealed class AiProgress {
     object Idle : AiProgress()
@@ -24,9 +22,9 @@ sealed class AiProgress {
     data class TopicsSelected(val count: Int) : AiProgress()
     object PreparingSources : AiProgress()
     object GeneratingAnswer : AiProgress()
-    data class Streaming(val partialText: String) : AiProgress()
     data class Completed(val text: String, val sources: List<Article>) : AiProgress()
     data class Error(val error: String) : AiProgress()
+    data class Streaming(val text: String) : AiProgress()
 }
 
 class AILogicEngine(
@@ -169,7 +167,6 @@ class AILogicEngine(
                 - أرفق النصوص الحرفية من الأحاديث والآثار كما هي من المصادر المرفقة.
                 - وجّه المستخدم إلى قراءة المصادر الأصلية لمزيد من التفصيل.
                 - في الختام، اذكر أسماء المصادر التي استقيت منها الإجابة.
-                - اجعل إجابتك مختصرة ومركزة، واكتبها دفعة واحدة بدون تأخير.
 
                 السؤال: "$question"
 
@@ -177,19 +174,29 @@ class AILogicEngine(
                 $articlesContext
             """.trimIndent()
 
-            // Use streaming for the final answer
-            val accumulatedText = StringBuilder()
-            var hasAnyToken = false
-            callGeminiFinalStreaming(finalPrompt) { token ->
-                accumulatedText.append(token)
-                hasAnyToken = true
-                emit(AiProgress.Streaming(accumulatedText.toString()))
+            // Stream the final answer
+            var fullAnswer = ""
+            var streamError: String? = null
+            try {
+                callGeminiFinalStream(finalPrompt) { chunk ->
+                    fullAnswer += chunk
+                    emit(AiProgress.Streaming(fullAnswer))
+                }
+            } catch (e: Exception) {
+                streamError = e.message
             }
             
-            if (!hasAnyToken) {
-                emit(AiProgress.Error("حدث خطأ أثناء توليد الإجابة النهائية."))
+            if (streamError != null) {
+                if (fullAnswer.isNotEmpty()) {
+                    // Partial answer available - emit as completed
+                    emit(AiProgress.Completed(fullAnswer, articles))
+                } else {
+                    emit(AiProgress.Error("حدث خطأ أثناء توليد الإجابة النهائية: ${streamError}"))
+                }
+            } else if (fullAnswer.isNotEmpty()) {
+                emit(AiProgress.Completed(fullAnswer, articles))
             } else {
-                emit(AiProgress.Completed(accumulatedText.toString(), articles))
+                emit(AiProgress.Error("حدث خطأ أثناء توليد الإجابة النهائية."))
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -228,49 +235,6 @@ class AILogicEngine(
         return executeGeminiCall(model, BuildConfig.API_KEY_ANSWER, request)
     }
 
-    private suspend fun callGeminiFinalStreaming(prompt: String, onToken: suspend (String) -> Unit) {
-        val model = "gemini-3.1-flash-lite"
-        val key = BuildConfig.API_KEY_ANSWER
-        if (key.isEmpty()) return
-
-        try {
-            val requestObj = GenerateContentRequest(
-                contents = listOf(Content(parts = listOf(Part(text = prompt)))),
-                generationConfig = GenerationConfig(temperature = 0.3f)
-            )
-            val jsonBody = moshi.adapter(GenerateContentRequest::class.java).toJson(requestObj)
-            val mediaType = "application/json".toMediaType()
-
-            val url = "https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?key=${key}"
-            val request = okhttp3.Request.Builder()
-                .url(url)
-                .post(jsonBody.toRequestBody(mediaType))
-                .build()
-
-            withContext(Dispatchers.IO) {
-                RetrofitClient.getOkHttpClient().newCall(request).execute().use { response ->
-                    val source = response.body?.source() ?: return@withContext
-                    while (!source.exhausted()) {
-                        val line = source.readUtf8Line() ?: break
-                        if (line.startsWith("data: ")) {
-                            val data = line.removePrefix("data: ")
-                            if (data == "[DONE]") break
-                            try {
-                                val chunk = moshi.adapter(GenerateContentResponse::class.java).fromJson(data)
-                                val text = chunk?.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
-                                if (!text.isNullOrEmpty()) {
-                                    onToken(text)
-                                }
-                            } catch (_: Exception) { }
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
     private suspend fun executeGeminiCall(model: String, key: String, request: GenerateContentRequest): String? {
         if (key.isEmpty()) return null
         return try {
@@ -279,6 +243,60 @@ class AILogicEngine(
         } catch (e: Exception) {
             e.printStackTrace()
             null
+        }
+    }
+
+    private suspend fun callGeminiFinalStream(
+        prompt: String,
+        onChunk: (String) -> Unit
+    ) {
+        val model = "gemini-3.1-flash-lite"
+        val request = GenerateContentRequest(
+            contents = listOf(Content(parts = listOf(Part(text = prompt)))),
+            generationConfig = GenerationConfig(temperature = 0.3f)
+        )
+        val key = BuildConfig.API_KEY_ANSWER
+        if (key.isEmpty()) throw Exception("API_KEY_ANSWER is not configured")
+
+        val response = RetrofitClient.service.streamGenerateContent(model, key, request)
+        if (!response.isSuccessful) {
+            throw Exception("API error: ${response.code()} ${response.message()}")
+        }
+
+        val body = response.body() ?: throw Exception("Empty response body")
+        
+        withContext(Dispatchers.IO) {
+            body.byteStream().bufferedReader().use { reader ->
+                var line: String?
+                while (reader.readLine().also { line = it } != null) {
+                    val ln = line ?: continue
+                    if (ln.startsWith("data: ")) {
+                        val jsonStr = ln.removePrefix("data: ").trim()
+                        if (jsonStr == "[DONE]") continue
+                        
+                        try {
+                            val json = org.json.JSONObject(jsonStr)
+                            val candidates = json.optJSONArray("candidates")
+                            if (candidates != null && candidates.length() > 0) {
+                                val content = candidates.getJSONObject(0).optJSONObject("content")
+                                if (content != null) {
+                                    val parts = content.optJSONArray("parts")
+                                    if (parts != null && parts.length() > 0) {
+                                        val text = parts.getJSONObject(0).optString("text", "")
+                                        if (text.isNotEmpty()) {
+                                            withContext(Dispatchers.Main) {
+                                                onChunk(text)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (_: Exception) {
+                            // Skip malformed JSON chunks
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -22,11 +22,9 @@ object RetrofitClient {
     private val okHttpClient = OkHttpClient.Builder()
         .addInterceptor(logging)
         .connectTimeout(60, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)  // Longer for streaming
+        .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
-
-    fun getOkHttpClient(): OkHttpClient = okHttpClient
 
     val service: GeminiApiService by lazy {
         Retrofit.Builder()
