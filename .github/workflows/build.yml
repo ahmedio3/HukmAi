@@ -11,6 +11,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true
       
       - uses: actions/setup-java@v4
         with:
@@ -22,6 +24,9 @@ jobs:
         with:
           gradle-version: "9.3.1"
           cache-read-only: false
+      
+      - name: Verify database exists
+        run: ls -lh app/src/main/assets/databases/feqhia.db
       
       - name: Set up .env
         run: cp .env.example .env
