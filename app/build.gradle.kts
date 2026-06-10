@@ -3,7 +3,6 @@ plugins {
   alias(libs.plugins.kotlin.compose)
   alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.roborazzi)
-  alias(libs.plugins.secrets)
 }
 
 android {
@@ -18,6 +17,11 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+    // Gemini API Keys - read from environment variables (set in CI or local)
+    buildConfigField("String", "API_KEY_ROUTER_MAIN", "\"${System.getenv("API_KEY_ROUTER_MAIN") ?: ""}\"")
+    buildConfigField("String", "API_KEY_ROUTER_FALLBACK", "\"${System.getenv("API_KEY_ROUTER_FALLBACK") ?: ""}\"")
+    buildConfigField("String", "API_KEY_ANSWER", "\"${System.getenv("API_KEY_ANSWER") ?: ""}\"")
   }
 
   signingConfigs {
@@ -51,14 +55,6 @@ android {
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
 }
-
-// Configure the Secrets Gradle Plugin to use .env and .env.example files
-// to match the convention used in Web projects.
-secrets {
-  propertiesFileName = ".env"
-  defaultPropertiesFileName = ".env.example"
-}
-
 // Some unused dependencies are commented out below instead of being removed.
 // This makes it easy to add them back in the future if needed.
 dependencies {

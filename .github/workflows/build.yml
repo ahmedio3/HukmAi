@@ -26,27 +26,11 @@ jobs:
       - name: Verify database exists
         run: ls -lh app/src/main/assets/databases/feqhia.db
       
-      - name: Set up .env with real API keys from GitHub Secrets
-        env:
-          MAIN_KEY: ${{ secrets.API_KEY_ROUTER_MAIN }}
-          FALLBACK_KEY: ${{ secrets.API_KEY_ROUTER_FALLBACK }}
-          ANSWER_KEY: ${{ secrets.API_KEY_ANSWER }}
-        run: |
-          python3 -c "
-import os, re
-c = open('.env.example').read()
-for k, e in [('API_KEY_ROUTER_MAIN','MAIN_KEY'),('API_KEY_ROUTER_FALLBACK','FALLBACK_KEY'),('API_KEY_ANSWER','ANSWER_KEY')]:
-    v = os.environ.get(e, '')
-    if v:
-        c = re.sub(r'^' + k + '=.*', k + '=' + v, c, flags=re.MULTILINE)
-open('.env', 'w').write(c)
-print('=== env verification ===')
-for l in c.strip().split(chr(10)):
-    if '=' in l and not l.startswith('#'):
-        print(l.split('=')[0] + '=****')
-"
-      
       - name: Build with Gradle
+        env:
+          API_KEY_ROUTER_MAIN: ${{ secrets.API_KEY_ROUTER_MAIN }}
+          API_KEY_ROUTER_FALLBACK: ${{ secrets.API_KEY_ROUTER_FALLBACK }}
+          API_KEY_ANSWER: ${{ secrets.API_KEY_ANSWER }}
         run: gradle assembleDebug --stacktrace --no-daemon
       
       - uses: actions/upload-artifact@v4
