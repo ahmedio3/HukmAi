@@ -4,12 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.data.model.Article
+import com.example.data.model.ChatMessage
 import com.example.data.model.TreeNode
 import com.example.data.repository.FeqhRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 
 enum class AppTab {
     HOME, AI, SETTINGS
@@ -56,19 +58,78 @@ class FeqhViewModel(private val repository: FeqhRepository) : ViewModel() {
 
     private val aiLogicEngine = com.example.data.api.AILogicEngine(repository)
 
+    // ---- Chat State ----
     private val _aiProgress = MutableStateFlow<com.example.data.api.AiProgress>(com.example.data.api.AiProgress.Idle)
     val aiProgress: StateFlow<com.example.data.api.AiProgress> = _aiProgress.asStateFlow()
+
+    val chatMessages: StateFlow<List<ChatMessage>> = repository.getAllChatMessages()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun clearAiState() {
         _aiProgress.value = com.example.data.api.AiProgress.Idle
     }
 
+    fun clearChat() {
+        viewModelScope.launch {
+            repository.deleteAllChatMessages()
+        }
+    }
+
+    suspend fun loadSourcesFromJson(sourcesJson: String?): List<Article> {
+        if (sourcesJson.isNullOrEmpty()) return emptyList()
+        return try {
+            val ids = JSONArray(sourcesJson).let { arr ->
+                (0 until arr.length()).map { arr.getInt(it) }
+            }
+            if (ids.isNotEmpty()) repository.getArticlesByIds(ids) else emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
     fun submitAiQuestion(question: String) {
         val trimmed = question.trim()
         if (trimmed.isEmpty()) return
+
         viewModelScope.launch {
+            // 1. Save user message
+            val userMsg = ChatMessage(role = "user", content = trimmed)
+            repository.insertChatMessage(userMsg)
+
+            // 2. Run AI and save response
             aiLogicEngine.answerQuestion(trimmed).collect { progress ->
                 _aiProgress.value = progress
+                when (progress) {
+                    is com.example.data.api.AiProgress.Completed -> {
+                        val sourcesJson = if (progress.sources.isNotEmpty()) {
+                            JSONArray(progress.sources.map { it.id }).toString()
+                        } else null
+                        val aiMsg = ChatMessage(
+                            role = "ai",
+                            content = progress.text,
+                            sourcesJson = sourcesJson
+                        )
+                        repository.insertChatMessage(aiMsg)
+                        _aiProgress.value = com.example.data.api.AiProgress.Idle
+                    }
+                    is com.example.data.api.AiProgress.Error -> {
+                        val errorMsg = ChatMessage(
+                            role = "ai",
+                            content = "⚠️ ${progress.error}"
+                        )
+                        repository.insertChatMessage(errorMsg)
+                        _aiProgress.value = com.example.data.api.AiProgress.Idle
+                    }
+                    is com.example.data.api.AiProgress.OutOfScope -> {
+                        val outMsg = ChatMessage(
+                            role = "ai",
+                            content = progress.reason
+                        )
+                        repository.insertChatMessage(outMsg)
+                        _aiProgress.value = com.example.data.api.AiProgress.Idle
+                    }
+                    else -> { /* still loading - update progress UI */ }
+                }
             }
         }
     }

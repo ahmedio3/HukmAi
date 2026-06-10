@@ -3,6 +3,7 @@ package com.example.data.repository
 import androidx.sqlite.db.SimpleSQLiteQuery
 import com.example.data.dao.FeqhDao
 import com.example.data.model.Article
+import com.example.data.model.ChatMessage
 import com.example.data.model.TreeNode
 import kotlinx.coroutines.flow.Flow
 
@@ -24,6 +25,13 @@ class FeqhRepository(private val feqhDao: FeqhDao) {
     suspend fun getArticleById(articleId: Int): Article? = feqhDao.getArticleById(articleId)
 
     suspend fun getNodeById(nodeId: Int): TreeNode? = feqhDao.getNodeById(nodeId)
+
+    // ---- Chat Messages ----
+    fun getAllChatMessages(): Flow<List<ChatMessage>> = feqhDao.getAllChatMessages()
+
+    suspend fun insertChatMessage(message: ChatMessage) = feqhDao.insertChatMessage(message)
+
+    suspend fun deleteAllChatMessages() = feqhDao.deleteAllChatMessages()
 
     suspend fun search(query: String): List<Article> {
         val trimmed = query.trim()

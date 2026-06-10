@@ -1,10 +1,12 @@
 package com.example.data.dao
 
 import androidx.room.Dao
+import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.RawQuery
 import androidx.sqlite.db.SupportSQLiteQuery
 import com.example.data.model.Article
+import com.example.data.model.ChatMessage
 import com.example.data.model.TreeNode
 import kotlinx.coroutines.flow.Flow
 
@@ -52,4 +54,14 @@ interface FeqhDao {
 
     @Query("SELECT * FROM articles WHERE title LIKE :likeQuery OR text LIKE :likeQuery")
     suspend fun searchArticlesLike(likeQuery: String): List<Article>
+
+    // ---- Chat Messages ----
+    @Query("SELECT * FROM chat_messages ORDER BY timestamp ASC")
+    fun getAllChatMessages(): Flow<List<ChatMessage>>
+
+    @Insert
+    suspend fun insertChatMessage(message: ChatMessage)
+
+    @Query("DELETE FROM chat_messages")
+    suspend fun deleteAllChatMessages()
 }

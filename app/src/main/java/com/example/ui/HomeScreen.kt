@@ -9,11 +9,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
@@ -44,6 +46,8 @@ import com.example.data.model.TreeNode
 import com.example.ui.theme.*
 import com.example.viewmodel.AppTab
 import com.example.viewmodel.FeqhViewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun MainAppScreen(viewModel: FeqhViewModel) {
@@ -348,7 +352,7 @@ fun CategoryItemCard(
             )
         }
         Icon(
-            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+            imageVector = Icons.Filled.KeyboardArrowLeft,
             contentDescription = "فتح",
             tint = IosTextSecondary,
             modifier = Modifier.size(20.dp)
@@ -463,7 +467,7 @@ fun SearchResultCard(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                imageVector = Icons.Filled.KeyboardArrowLeft,
                 contentDescription = null,
                 tint = IosTextSecondary,
                 modifier = Modifier.size(18.dp)
@@ -795,202 +799,424 @@ fun ArticleViewerScreen(
 }
 
 // ==========================================
-// TAB 2: AI ASSISTANT PLACEHOLDER SCREEN
-// ==========================================
-// TAB 2: AI TAB VIEW
+// TAB 2: AI ASSISTANT — CHAT INTERFACE
 // ==========================================
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
     var questionText by remember { mutableStateOf("") }
     val aiProgress by viewModel.aiProgress.collectAsStateWithLifecycle()
-    var showSourcesBottomSheet by remember { mutableStateOf(false) }
-    var currentSources by remember { mutableStateOf<List<com.example.data.model.Article>>(emptyList()) }
+    val chatMessages by viewModel.chatMessages.collectAsStateWithLifecycle()
+    var showSourcesSheet by remember { mutableStateOf(false) }
+    var sourcesForSheet by remember { mutableStateOf<List<com.example.data.model.Article>>(emptyList()) }
+    var sourceLoadError by remember { mutableStateOf(false) }
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val listState = rememberLazyListState()
+    val isAiThinking = aiProgress !is com.example.data.api.AiProgress.Idle
+    val coroutineScope = rememberCoroutineScope()
+
+    // Auto-scroll to bottom when new messages arrive or progress changes
+    LaunchedEffect(chatMessages.size, aiProgress) {
+        if (chatMessages.isNotEmpty()) {
+            delay(100)
+            listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(IosBackground)
     ) {
-        // App bar like
-        Text(
-            text = "المفتي الذكي",
-            style = MaterialTheme.typography.displaySmall.copy(
-                fontWeight = FontWeight.Bold,
-                color = IosTextPrimary
-            ),
-            modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 12.dp)
-        )
-
-        // Result / Progress view
-        Box(
+        // iOS-style nav bar with title
+        Row(
             modifier = Modifier
-                .weight(1f)
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp)
+                .background(IosSurface)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            when (val state = aiProgress) {
-                is com.example.data.api.AiProgress.Idle -> {
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Color(0xFF007AFF), modifier = Modifier.size(64.dp))
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("اسأل المفتي الذكي أي سؤال فقهي،\nوسيجيبك بالاعتماد على الموسوعة الفقهية فقط.", textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge.copy(color = IosTextSecondary))
-                    }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "رجوع",
+                tint = Color(0xFF007AFF),
+                modifier = Modifier
+                    .size(24.dp)
+                    .clickable { }
+                    .padding(4.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = "المفتي الذكي",
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = IosTextPrimary
+                ),
+                modifier = Modifier.weight(1f)
+            )
+            if (chatMessages.isNotEmpty()) {
+                IconButton(onClick = { viewModel.clearChat() }) {
+                    Icon(Icons.Default.DeleteSweep, contentDescription = "مسح المحادثة", tint = Color(0xFF007AFF))
                 }
-                is com.example.data.api.AiProgress.Error -> {
-                    Column(modifier = Modifier.fillMaxSize().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                        Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = Color.Red, modifier = Modifier.size(48.dp))
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(state.error, color = IosTextPrimary, textAlign = TextAlign.Center)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = { viewModel.clearAiState() }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF))) {
-                            Text("رجوع", color = Color.White)
-                        }
-                    }
+            }
+        }
+        HorizontalDivider(color = IosSeparator, thickness = 0.5.dp)
+
+        // Messages list
+        if (chatMessages.isEmpty() && !isAiThinking) {
+            // Empty state
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Default.AutoAwesome,
+                        contentDescription = null,
+                        tint = Color(0xFF007AFF),
+                        modifier = Modifier.size(64.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "اسأل المفتي الذكي أي سؤال فقهي،\nوسيجيبك بالاعتماد على الموسوعة الفقهية فقط.",
+                        textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.bodyLarge.copy(color = IosTextSecondary)
+                    )
                 }
-                is com.example.data.api.AiProgress.Completed -> {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        Card(
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(containerColor = IosSurface),
-                            elevation = CardDefaults.cardElevation(0.dp),
-                            modifier = Modifier.fillMaxWidth().weight(1f)
-                        ) {
-                            LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                                item {
-                                    Text("الإجابة:", style = MaterialTheme.typography.titleMedium.copy(color = IslamicDeepGreen, fontWeight = FontWeight.Bold))
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(state.text, style = MaterialTheme.typography.bodyLarge.copy(color = IosTextPrimary, lineHeight = 28.sp))
+            }
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp),
+                contentPadding = PaddingValues(vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Chat messages
+                itemsIndexed(chatMessages) { index, msg ->
+                    if (msg.role == "user") {
+                        UserChatBubble(message = msg.content)
+                    } else {
+                        AiChatMessage(
+                            message = msg.content,
+                            sourcesJson = msg.sourcesJson,
+                            onViewSources = {
+                                coroutineScope.launch {
+                                    val articles = viewModel.loadSourcesFromJson(msg.sourcesJson)
+                                    if (articles.isNotEmpty()) {
+                                        sourcesForSheet = articles
+                                        showSourcesSheet = true
+                                    }
                                 }
                             }
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Button(
-                            onClick = { 
-                                currentSources = state.sources
-                                showSourcesBottomSheet = true 
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF2F2F7)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("عرض المصادر (${state.sources.size})", color = Color(0xFF007AFF), fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Button(onClick = { viewModel.clearAiState() }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF))) {
-                            Text("سؤال جديد", color = Color.White)
-                        }
+                        )
                     }
                 }
-                else -> {
-                    // Loading progress steps
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator(color = IslamicDeepGreen)
-                        Spacer(modifier = Modifier.height(24.dp))
-                        val progressText = when (state) {
-                            is com.example.data.api.AiProgress.ReceivedQuestion -> "تم استلام السؤال..."
-                            is com.example.data.api.AiProgress.AnalyzingScope -> "جاري تحليل النطاق لمعرفة الكتب المناسبة..."
-                            is com.example.data.api.AiProgress.BooksSelected -> "تم اختيار الكتب:\n" + state.bookNames.joinToString("، ")
-                            is com.example.data.api.AiProgress.SelectingBabs -> "جاري اختيار الأبواب المناسبة..."
-                            is com.example.data.api.AiProgress.BabsSelected -> "تم اختيار الأبواب:\n" + state.babNames.joinToString("، ")
-                            is com.example.data.api.AiProgress.SelectingTopics -> "جاري البحث عن الموضوعات..."
-                            is com.example.data.api.AiProgress.TopicsSelected -> "تم اختيار [${state.count}] موضوعات مرجعية."
-                            is com.example.data.api.AiProgress.PreparingSources -> "تم تجهيز المصادر، لدي كل ما أريده."
-                            is com.example.data.api.AiProgress.GeneratingAnswer -> "جاري توليد الإجابة النهائية بناءً على المصادر..."
-                            is com.example.data.api.AiProgress.OutOfScope -> state.reason
-                            else -> ""
-                        }
-                        Text(progressText, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge.copy(color = IosTextPrimary, fontWeight = FontWeight.Medium), modifier = Modifier.padding(horizontal = 32.dp))
-                        
-                        if (state is com.example.data.api.AiProgress.OutOfScope) {
-                            Spacer(modifier = Modifier.height(24.dp))
-                            Button(onClick = { viewModel.clearAiState() }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF007AFF))) {
-                                Text("سؤال جديد", color = Color.White)
-                            }
-                        }
+
+                // Thinking indicator while AI is processing
+                if (isAiThinking) {
+                    item {
+                        AiThinkingIndicator(progress = aiProgress)
                     }
                 }
             }
         }
 
-        // Input Field
-        if (aiProgress is com.example.data.api.AiProgress.Idle) {
-            Box(
+        // Input bar with send button on RIGHT
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(IosSurface)
+                .navigationBarsWithImePadding()
+        ) {
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
-                    .background(Color(0xFFE2E2E7), shape = RoundedCornerShape(24.dp))
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                contentAlignment = Alignment.Center
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.Bottom
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // Text input
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(Color(0xFFE2E2E7), shape = RoundedCornerShape(20.dp))
+                        .padding(horizontal = 16.dp, vertical = 2.dp)
+                ) {
                     androidx.compose.foundation.text.BasicTextField(
                         value = questionText,
                         onValueChange = { questionText = it },
                         textStyle = MaterialTheme.typography.bodyLarge.copy(color = IosTextPrimary),
-                        modifier = Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 8.dp).heightIn(min = 24.dp, max = 100.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 20.dp, max = 100.dp)
+                            .padding(vertical = 10.dp),
                         decorationBox = { innerTextField ->
                             if (questionText.isEmpty()) {
                                 Text(
-                                    text = "اكتب سؤالك هنا...",
+                                    text = "اسأل المفتي الذكي...",
                                     style = MaterialTheme.typography.bodyLarge.copy(color = IosTextSecondary)
                                 )
                             }
                             innerTextField()
                         }
                     )
-                    IconButton(
-                        onClick = {
-                            if (questionText.isNotBlank()) {
-                                focusManager.clearFocus()
-                                viewModel.submitAiQuestion(questionText)
-                                questionText = ""
-                            }
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Send button on RIGHT
+                val canSend = questionText.isNotBlank() && !isAiThinking
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(
+                            if (canSend) Color(0xFF007AFF) else Color(0xFFC7C7CC),
+                            shape = CircleShape
+                        )
+                        .clickable(enabled = canSend) {
+                            focusManager.clearFocus()
+                            viewModel.submitAiQuestion(questionText)
+                            questionText = ""
                         },
-                        modifier = Modifier.size(40.dp).background(Color(0xFF007AFF), shape = androidx.compose.foundation.shape.CircleShape)
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "إرسال", tint = Color.White, modifier = Modifier.size(20.dp).padding(end = 2.dp))
-                    }
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "إرسال",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
         }
     }
 
-    if (showSourcesBottomSheet) {
-        androidx.compose.material3.ModalBottomSheet(
-            onDismissRequest = { showSourcesBottomSheet = false },
+    // Sources Bottom Sheet
+    if (showSourcesSheet && sourcesForSheet.isNotEmpty()) {
+        ModalBottomSheet(
+            onDismissRequest = { showSourcesSheet = false },
             containerColor = IosSurface
         ) {
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).padding(bottom = 32.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(bottom = 32.dp)
+            ) {
                 Text(
                     text = "المصادر المعتمدة",
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold, color = IosTextPrimary),
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = IosTextPrimary
+                    ),
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
-                LazyColumn {
-                    itemsIndexed(currentSources) { index, src ->
-                        Column(modifier = Modifier.fillMaxWidth().clickable {
-                            showSourcesBottomSheet = false
-                            src.id?.let { viewModel.openArticle(it) }
-                        }.padding(vertical = 12.dp)) {
-                            Text(src.title, style = MaterialTheme.typography.bodyLarge.copy(color = IosTextPrimary, fontWeight = FontWeight.Medium))
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text("اضغط لفتح المقال بالكامل", style = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFF007AFF)))
+                sourcesForSheet.forEach { src ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showSourcesSheet = false
+                                src.id?.let { viewModel.openArticle(it) }
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.MenuBook,
+                            contentDescription = null,
+                            tint = IslamicDeepGreen,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                src.title,
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    color = IosTextPrimary,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            )
+                            Text(
+                                "اضغط لفتح المقال",
+                                style = MaterialTheme.typography.bodySmall.copy(color = Color(0xFF007AFF))
+                            )
                         }
-                        if (index < currentSources.lastIndex) {
-                            HorizontalDivider(color = IosSeparator)
-                        }
+                        Icon(
+                            Icons.Filled.KeyboardArrowLeft,
+                            contentDescription = null,
+                            tint = IosTextSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    HorizontalDivider(color = IosSeparator)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun UserChatBubble(message: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start // User messages on RIGHT (RTL: Start = Right)
+    ) {
+        Box(
+            modifier = Modifier
+                .widthIn(max = 300.dp)
+                .background(
+                    Color(0xFF007AFF),
+                    shape = RoundedCornerShape(
+                        topStart = 18.dp,
+                        topEnd = 18.dp,
+                        bottomStart = 18.dp,
+                        bottomEnd = 4.dp
+                    )
+                )
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+        ) {
+            Text(
+                text = message,
+                color = Color.White,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontSize = 16.sp,
+                    lineHeight = 24.sp
+                )
+            )
+        }
+    }
+}
+
+@Composable
+fun AiChatMessage(
+    message: String,
+    sourcesJson: String?,
+    onViewSources: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.Start // AI messages on RIGHT
+    ) {
+        Text(
+            text = message,
+            color = IosTextPrimary,
+            style = MaterialTheme.typography.bodyLarge.copy(
+                fontSize = 16.sp,
+                lineHeight = 28.sp,
+                textAlign = TextAlign.Justify
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp)
+        )
+
+        // Sources button (if available)
+        if (sourcesJson != null && sourcesJson != "[]" && sourcesJson != "null") {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 4.dp),
+                horizontalArrangement = Arrangement.Start
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color(0xFFF2F2F7),
+                    modifier = Modifier.clickable { onViewSources() }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.MenuBook,
+                            contentDescription = null,
+                            tint = Color(0xFF007AFF),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "المصادر",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = Color(0xFF007AFF),
+                                fontWeight = FontWeight.Medium
+                            )
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            Icons.Filled.KeyboardArrowLeft,
+                            contentDescription = null,
+                            tint = Color(0xFF007AFF),
+                            modifier = Modifier.size(14.dp)
+                        )
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun AiThinkingIndicator(progress: com.example.data.api.AiProgress) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
+    ) {
+        // Animated dots
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 4.dp)
+        ) {
+            // Pulsing dots
+            repeat(3) { index ->
+                val infiniteTransition = rememberInfiniteTransition(label = "dots")
+                val alpha by infiniteTransition.animateFloat(
+                    initialValue = 0.3f,
+                    targetValue = 1.0f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = 600, delayMillis = index * 200),
+                        repeatMode = RepeatMode.Reverse
+                    ),
+                    label = "dotAlpha"
+                )
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .padding(horizontal = 2.dp)
+                        .background(Color(0xFF007AFF).copy(alpha = alpha), shape = CircleShape)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Progress text
+            val progressText = when (progress) {
+                is com.example.data.api.AiProgress.ReceivedQuestion -> "تم استلام السؤال..."
+                is com.example.data.api.AiProgress.AnalyzingScope -> "جاري تحليل السؤال..."
+                is com.example.data.api.AiProgress.BooksSelected -> "تم تحديد الكتب: ${progress.bookNames.take(2).joinToString("، ")}"
+                is com.example.data.api.AiProgress.SelectingBabs -> "جاري البحث في الأبواب..."
+                is com.example.data.api.AiProgress.BabsSelected -> "تم تحديد ${progress.babNames.size} أبواب"
+                is com.example.data.api.AiProgress.SelectingTopics -> "جاري تحديد الموضوعات..."
+                is com.example.data.api.AiProgress.TopicsSelected -> "تم اختيار ${progress.count} موضوعات"
+                is com.example.data.api.AiProgress.PreparingSources -> "تجهيز المصادر..."
+                is com.example.data.api.AiProgress.GeneratingAnswer -> "توليد الإجابة..."
+                is com.example.data.api.AiProgress.OutOfScope -> progress.reason
+                else -> ""
+            }
+
+            Text(
+                text = progressText,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    color = IosTextSecondary,
+                    fontWeight = FontWeight.Medium
+                )
+            )
         }
     }
 }
