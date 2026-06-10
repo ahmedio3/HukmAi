@@ -1071,7 +1071,6 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
 }
 
 @Composable
-@Composable
 fun UserChatBubble(message: String, timestamp: Long) {
     val timeText = remember(timestamp) { formatTimestamp(timestamp) }
     Column(
