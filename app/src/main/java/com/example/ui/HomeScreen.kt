@@ -32,6 +32,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -900,11 +902,17 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                 // Chat messages
                 itemsIndexed(chatMessages) { index, msg ->
                     if (msg.role == "user") {
-                        UserChatBubble(message = msg.content)
+                        UserChatBubble(
+                            message = msg.content,
+                            timestamp = msg.timestamp
+                        )
                     } else {
+                        val isError = msg.content.startsWith("⚠️")
                         AiChatMessage(
                             message = msg.content,
-                            sourcesJson = msg.sourcesJson,
+                            sourcesJson = if (!isError) msg.sourcesJson else null,
+                            timestamp = msg.timestamp,
+                            isError = isError,
                             onViewSources = {
                                 coroutineScope.launch {
                                     val articles = viewModel.loadSourcesFromJson(msg.sourcesJson)
@@ -913,7 +921,8 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                                         showSourcesSheet = true
                                     }
                                 }
-                            }
+                            },
+                            onRetry = { viewModel.retryLastQuestion() }
                         )
                     }
                 }
@@ -932,7 +941,7 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
             modifier = Modifier
                 .fillMaxWidth()
                 .background(IosSurface)
-                .imePadding()
+                .padding(bottom = 6.dp)
         ) {
             Row(
                 modifier = Modifier
@@ -1062,10 +1071,12 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
 }
 
 @Composable
-fun UserChatBubble(message: String) {
-    Row(
+@Composable
+fun UserChatBubble(message: String, timestamp: Long) {
+    val timeText = remember(timestamp) { formatTimestamp(timestamp) }
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Start // User messages on RIGHT (RTL: Start = Right)
+        horizontalAlignment = Alignment.Start // User on RIGHT in RTL
     ) {
         Box(
             modifier = Modifier
@@ -1090,6 +1101,13 @@ fun UserChatBubble(message: String) {
                 )
             )
         }
+        // Timestamp below user bubble
+        Text(
+            text = timeText,
+            color = Color(0xFFC7C7CC),
+            fontSize = 11.sp,
+            modifier = Modifier.padding(start = 4.dp, top = 2.dp)
+        )
     }
 }
 
@@ -1097,68 +1115,140 @@ fun UserChatBubble(message: String) {
 fun AiChatMessage(
     message: String,
     sourcesJson: String?,
-    onViewSources: () -> Unit
+    timestamp: Long,
+    isError: Boolean,
+    onViewSources: () -> Unit,
+    onRetry: () -> Unit
 ) {
+    val formattedText = remember(message) { parseAiResponse(message) }
+    val timeText = remember(timestamp) { formatTimestamp(timestamp) }
+
     Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.Start // AI messages on RIGHT
+        horizontalAlignment = Alignment.Start // AI on RIGHT
     ) {
-        Text(
-            text = message,
-            color = IosTextPrimary,
-            style = MaterialTheme.typography.bodyLarge.copy(
-                fontSize = 16.sp,
-                lineHeight = 28.sp,
-                textAlign = TextAlign.Justify
-            ),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp)
-        )
-
-        // Sources button (if available)
-        if (sourcesJson != null && sourcesJson != "[]" && sourcesJson != "null") {
-            Spacer(modifier = Modifier.height(8.dp))
+        if (isError) {
+            // Error message with retry button
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 4.dp),
+                    .padding(horizontal = 4.dp),
                 horizontalArrangement = Arrangement.Start
             ) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = Color(0xFFF2F2F7),
-                    modifier = Modifier.clickable { onViewSources() }
+                Box(
+                    modifier = Modifier
+                        .widthIn(max = 300.dp)
+                        .background(
+                            Color(0xFFFFEBEE), // Light red background
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Text(
+                        text = message.removePrefix("⚠️ ").removePrefix("⚠️"),
+                        color = Color(0xFFD32F2F),
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontSize = 15.sp,
+                            lineHeight = 24.sp
+                        )
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            // Retry button
+            TextButton(
+                onClick = onRetry,
+                modifier = Modifier.padding(start = 4.dp)
+            ) {
+                Text(
+                    text = "↻ إعادة المحاولة",
+                    color = Color(0xFF007AFF),
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp
+                )
+            }
+        } else {
+            // Normal AI message with formatted text
+            Text(
+                text = formattedText,
+                color = IosTextPrimary,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontSize = 16.sp,
+                    lineHeight = 28.sp,
+                    textAlign = TextAlign.Justify
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp)
+            )
+
+            // Sources button (if available)
+            if (sourcesJson != null && sourcesJson != "[]" && sourcesJson != "null") {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 4.dp),
+                    horizontalArrangement = Arrangement.Start
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFF2F2F7),
+                        modifier = Modifier.clickable { onViewSources() }
                     ) {
-                        Icon(
-                            Icons.AutoMirrored.Outlined.MenuBook,
-                            contentDescription = null,
-                            tint = Color(0xFF007AFF),
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "المصادر",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                color = Color(0xFF007AFF),
-                                fontWeight = FontWeight.Medium
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Outlined.MenuBook,
+                                contentDescription = null,
+                                tint = Color(0xFF007AFF),
+                                modifier = Modifier.size(14.dp)
                             )
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(
-                            Icons.Filled.KeyboardArrowLeft,
-                            contentDescription = null,
-                            tint = Color(0xFF007AFF),
-                            modifier = Modifier.size(14.dp)
-                        )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "المصادر",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    color = Color(0xFF007AFF),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                Icons.Filled.KeyboardArrowLeft,
+                                contentDescription = null,
+                                tint = Color(0xFF007AFF),
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
                     }
                 }
             }
         }
+
+        // Timestamp
+        Text(
+            text = timeText,
+            color = Color(0xFFC7C7CC),
+            fontSize = 11.sp,
+            modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+        )
+    }
+}
+
+private fun formatTimestamp(millis: Long): String {
+    val now = System.currentTimeMillis()
+    val diff = now - millis
+    val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.US)
+    return if (diff < 60_000) {
+        "الآن"
+    } else if (diff < 3600_000) {
+        "${diff / 60_000} د"
+    } else if (diff < 86_400_000) {
+        sdf.format(java.util.Date(millis))
+    } else {
+        java.text.SimpleDateFormat("MMM d, HH:mm", java.util.Locale.US).format(java.util.Date(millis))
     }
 }
 
@@ -1381,6 +1471,68 @@ fun SettingsTabScreen() {
                 containerColor = IosSurface,
                 shape = RoundedCornerShape(14.dp)
             )
+        }
+    }
+}
+
+// ==========================================
+// AI RESPONSE TEXT PARSER
+// Formats: **bold**, ((hadith)) → blue, ﴿quran﴾ → green, [citation] → gray
+// ==========================================
+private fun parseAiResponse(text: String): AnnotatedString {
+    return buildAnnotatedString {
+        var i = 0
+        while (i < text.length) {
+            // Check for bold **
+            if (text.startsWith("**", i)) {
+                val end = text.indexOf("**", i + 2)
+                if (end != -1) {
+                    val content = text.substring(i + 2, end)
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                        append(content)
+                    }
+                    i = end + 2
+                    continue
+                }
+            }
+            // Check for hadith ((
+            if (text.startsWith("((", i)) {
+                val end = text.indexOf("))", i + 2)
+                if (end != -1) {
+                    val content = text.substring(i + 2, end)
+                    withStyle(SpanStyle(color = Color(0xFF007AFF), fontWeight = FontWeight.Medium)) {
+                        append(content)
+                    }
+                    i = end + 2
+                    continue
+                }
+            }
+            // Check for quran ﴿
+            if (text.startsWith("\uFDF0", i)) {
+                val end = text.indexOf("\uFDF1", i + 1)
+                if (end != -1) {
+                    val content = text.substring(i + 1, end)
+                    withStyle(SpanStyle(color = Color(0xFF34C759), fontWeight = FontWeight.Medium)) {
+                        append(content)
+                    }
+                    i = end + 1
+                    continue
+                }
+            }
+            // Check for citation [
+            if (text.startsWith("[", i)) {
+                val end = text.indexOf("]", i + 1)
+                if (end != -1) {
+                    val content = text.substring(i + 1, end)
+                    withStyle(SpanStyle(color = Color(0xFF8E8E93), fontStyle = FontStyle.Italic)) {
+                        append("[$content]")
+                    }
+                    i = end + 1
+                    continue
+                }
+            }
+            append(text[i])
+            i++
         }
     }
 }

@@ -65,6 +65,9 @@ class FeqhViewModel(private val repository: FeqhRepository) : ViewModel() {
     val chatMessages: StateFlow<List<ChatMessage>> = repository.getAllChatMessages()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // Store last user question for retry
+    private var _lastUserQuestion = ""
+
     fun clearAiState() {
         _aiProgress.value = com.example.data.api.AiProgress.Idle
     }
@@ -72,6 +75,15 @@ class FeqhViewModel(private val repository: FeqhRepository) : ViewModel() {
     fun clearChat() {
         viewModelScope.launch {
             repository.deleteAllChatMessages()
+        }
+    }
+
+    fun retryLastQuestion() {
+        if (_lastUserQuestion.isNotEmpty()) {
+            viewModelScope.launch {
+                repository.deleteLastAiMessage()
+                submitAiQuestionInternal(_lastUserQuestion)
+            }
         }
     }
 
@@ -88,6 +100,13 @@ class FeqhViewModel(private val repository: FeqhRepository) : ViewModel() {
     }
 
     fun submitAiQuestion(question: String) {
+        val trimmed = question.trim()
+        if (trimmed.isEmpty()) return
+        _lastUserQuestion = trimmed
+        submitAiQuestionInternal(trimmed)
+    }
+
+    private fun submitAiQuestionInternal(question: String) {
         val trimmed = question.trim()
         if (trimmed.isEmpty()) return
 

@@ -29,7 +29,11 @@ class FeqhRepository(private val feqhDao: FeqhDao) {
     // ---- Chat Messages ----
     fun getAllChatMessages(): Flow<List<ChatMessage>> = feqhDao.getAllChatMessages()
 
+    suspend fun getAllChatMessagesSync(): List<ChatMessage> = feqhDao.getAllChatMessagesSync()
+
     suspend fun insertChatMessage(message: ChatMessage) = feqhDao.insertChatMessage(message)
+
+    suspend fun deleteLastAiMessage() = feqhDao.deleteLastAiMessage()
 
     suspend fun deleteAllChatMessages() = feqhDao.deleteAllChatMessages()
 
