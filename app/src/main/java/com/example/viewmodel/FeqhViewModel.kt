@@ -147,7 +147,7 @@ class FeqhViewModel(private val repository: FeqhRepository) : ViewModel() {
                         repository.insertChatMessage(outMsg)
                         _aiProgress.value = com.example.data.api.AiProgress.Idle
                     }
-                    else -> { /* still loading - update progress UI */ }
+                    else -> { /* still loading or streaming - update progress UI */ }
                 }
             }
         }

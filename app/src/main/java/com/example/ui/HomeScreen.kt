@@ -816,6 +816,11 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val listState = rememberLazyListState()
     val isAiThinking = aiProgress !is com.example.data.api.AiProgress.Idle
+    val streamingText = remember(aiProgress) {
+        if (aiProgress is com.example.data.api.AiProgress.Streaming)
+            (aiProgress as com.example.data.api.AiProgress.Streaming).partialText
+        else null
+    }
     val coroutineScope = rememberCoroutineScope()
 
     // Auto-scroll to bottom when new messages arrive or progress changes
@@ -927,8 +932,36 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                     }
                 }
 
-                // Thinking indicator while AI is processing
-                if (isAiThinking) {
+                // Streaming text (shows while AI is generating)
+                if (streamingText != null) {
+                    item {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            // Show the partial response
+                            val formattedStream = remember(streamingText) { parseAiResponse(streamingText) }
+                            Text(
+                                text = formattedStream,
+                                color = IosTextPrimary,
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontSize = 16.sp,
+                                    lineHeight = 28.sp,
+                                    textAlign = TextAlign.Justify
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 4.dp)
+                            )
+                            // Blinking cursor indicator
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "▍",
+                                color = Color(0xFF007AFF),
+                                fontSize = 14.sp,
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
+                        }
+                    }
+                } else if (isAiThinking) {
+                    // Thinking indicator while AI is processing (before streaming starts)
                     item {
                         AiThinkingIndicator(progress = aiProgress)
                     }
@@ -941,12 +974,13 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
             modifier = Modifier
                 .fillMaxWidth()
                 .background(IosSurface)
-                .padding(bottom = 6.dp)
+                .imePadding()
+                .padding(bottom = 2.dp)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.Bottom
             ) {
                 // Text input

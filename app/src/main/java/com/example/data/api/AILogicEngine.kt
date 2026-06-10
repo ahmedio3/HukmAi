@@ -3,10 +3,14 @@ package com.example.data.api
 import com.example.BuildConfig
 import com.example.data.model.Article
 import com.example.data.model.TreeNode
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.withContext
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 
 sealed class AiProgress {
     object Idle : AiProgress()
@@ -20,6 +24,7 @@ sealed class AiProgress {
     data class TopicsSelected(val count: Int) : AiProgress()
     object PreparingSources : AiProgress()
     object GeneratingAnswer : AiProgress()
+    data class Streaming(val partialText: String) : AiProgress()
     data class Completed(val text: String, val sources: List<Article>) : AiProgress()
     data class Error(val error: String) : AiProgress()
 }
@@ -164,6 +169,7 @@ class AILogicEngine(
                 - أرفق النصوص الحرفية من الأحاديث والآثار كما هي من المصادر المرفقة.
                 - وجّه المستخدم إلى قراءة المصادر الأصلية لمزيد من التفصيل.
                 - في الختام، اذكر أسماء المصادر التي استقيت منها الإجابة.
+                - اجعل إجابتك مختصرة ومركزة، واكتبها دفعة واحدة بدون تأخير.
 
                 السؤال: "$question"
 
@@ -171,11 +177,19 @@ class AILogicEngine(
                 $articlesContext
             """.trimIndent()
 
-            val finalAnswer = callGeminiFinal(finalPrompt)
-            if (finalAnswer == null) {
+            // Use streaming for the final answer
+            val accumulatedText = StringBuilder()
+            var hasAnyToken = false
+            callGeminiFinalStreaming(finalPrompt) { token ->
+                accumulatedText.append(token)
+                hasAnyToken = true
+                emit(AiProgress.Streaming(accumulatedText.toString()))
+            }
+            
+            if (!hasAnyToken) {
                 emit(AiProgress.Error("حدث خطأ أثناء توليد الإجابة النهائية."))
             } else {
-                emit(AiProgress.Completed(finalAnswer, articles))
+                emit(AiProgress.Completed(accumulatedText.toString(), articles))
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -212,6 +226,49 @@ class AILogicEngine(
             generationConfig = GenerationConfig(temperature = 0.3f)
         )
         return executeGeminiCall(model, BuildConfig.API_KEY_ANSWER, request)
+    }
+
+    private suspend fun callGeminiFinalStreaming(prompt: String, onToken: suspend (String) -> Unit) {
+        val model = "gemini-3.1-flash-lite"
+        val key = BuildConfig.API_KEY_ANSWER
+        if (key.isEmpty()) return
+
+        try {
+            val requestObj = GenerateContentRequest(
+                contents = listOf(Content(parts = listOf(Part(text = prompt)))),
+                generationConfig = GenerationConfig(temperature = 0.3f)
+            )
+            val jsonBody = moshi.adapter(GenerateContentRequest::class.java).toJson(requestObj)
+            val mediaType = "application/json".toMediaType()
+
+            val url = "https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?key=${key}"
+            val request = okhttp3.Request.Builder()
+                .url(url)
+                .post(jsonBody.toRequestBody(mediaType))
+                .build()
+
+            withContext(Dispatchers.IO) {
+                RetrofitClient.getOkHttpClient().newCall(request).execute().use { response ->
+                    val source = response.body?.source() ?: return@withContext
+                    while (!source.exhausted()) {
+                        val line = source.readUtf8Line() ?: break
+                        if (line.startsWith("data: ")) {
+                            val data = line.removePrefix("data: ")
+                            if (data == "[DONE]") break
+                            try {
+                                val chunk = moshi.adapter(GenerateContentResponse::class.java).fromJson(data)
+                                val text = chunk?.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                                if (!text.isNullOrEmpty()) {
+                                    onToken(text)
+                                }
+                            } catch (_: Exception) { }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private suspend fun executeGeminiCall(model: String, key: String, request: GenerateContentRequest): String? {
