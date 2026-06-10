@@ -2,6 +2,7 @@ package com.example.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -931,7 +932,7 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
             modifier = Modifier
                 .fillMaxWidth()
                 .background(IosSurface)
-                .navigationBarsWithImePadding()
+                .imePadding()
         ) {
             Row(
                 modifier = Modifier
