@@ -13,6 +13,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
@@ -346,7 +348,7 @@ fun CategoryItemCard(
             )
         }
         Icon(
-            imageVector = Icons.Default.KeyboardArrowLeft,
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
             contentDescription = "فتح",
             tint = IosTextSecondary,
             modifier = Modifier.size(20.dp)
@@ -461,7 +463,7 @@ fun SearchResultCard(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Icon(
-                imageVector = Icons.Default.KeyboardArrowLeft,
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                 contentDescription = null,
                 tint = IosTextSecondary,
                 modifier = Modifier.size(18.dp)
@@ -955,7 +957,7 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                         },
                         modifier = Modifier.size(40.dp).background(Color(0xFF007AFF), shape = androidx.compose.foundation.shape.CircleShape)
                     ) {
-                        Icon(Icons.Default.Send, contentDescription = "Send", tint = Color.White, modifier = Modifier.size(20.dp).padding(end = 2.dp))
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "إرسال", tint = Color.White, modifier = Modifier.size(20.dp).padding(end = 2.dp))
                     }
                 }
             }

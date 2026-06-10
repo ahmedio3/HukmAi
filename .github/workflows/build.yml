@@ -28,15 +28,16 @@ jobs:
       
       - name: Set up .env with real API keys from GitHub Secrets
         run: |
-          cp .env.example .env
+          # Start fresh .env, only with keys that are actually set
+          echo "# Auto-generated .env for CI build" > .env
           if [ -n "${{ secrets.API_KEY_ROUTER_MAIN }}" ]; then
-            sed -i "s/^API_KEY_ROUTER_MAIN=.*/API_KEY_ROUTER_MAIN=${{ secrets.API_KEY_ROUTER_MAIN }}/" .env
+            echo "API_KEY_ROUTER_MAIN=${{ secrets.API_KEY_ROUTER_MAIN }}" >> .env
           fi
           if [ -n "${{ secrets.API_KEY_ROUTER_FALLBACK }}" ]; then
-            sed -i "s/^API_KEY_ROUTER_FALLBACK=.*/API_KEY_ROUTER_FALLBACK=${{ secrets.API_KEY_ROUTER_FALLBACK }}/" .env
+            echo "API_KEY_ROUTER_FALLBACK=${{ secrets.API_KEY_ROUTER_FALLBACK }}" >> .env
           fi
           if [ -n "${{ secrets.API_KEY_ANSWER }}" ]; then
-            sed -i "s/^API_KEY_ANSWER=.*/API_KEY_ANSWER=${{ secrets.API_KEY_ANSWER }}/" .env
+            echo "API_KEY_ANSWER=${{ secrets.API_KEY_ANSWER }}" >> .env
           fi
           echo "=== .env contents (keys hidden) ==="
           grep -v "KEY" .env || true
