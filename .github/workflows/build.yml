@@ -27,20 +27,40 @@ jobs:
         run: ls -lh app/src/main/assets/databases/feqhia.db
       
       - name: Set up .env with real API keys from GitHub Secrets
+        env:
+          MAIN_KEY: ${{ secrets.API_KEY_ROUTER_MAIN }}
+          FALLBACK_KEY: ${{ secrets.API_KEY_ROUTER_FALLBACK }}
+          ANSWER_KEY: ${{ secrets.API_KEY_ANSWER }}
         run: |
-          # Start fresh .env, only with keys that are actually set
-          echo "# Auto-generated .env for CI build" > .env
-          if [ -n "${{ secrets.API_KEY_ROUTER_MAIN }}" ]; then
-            echo "API_KEY_ROUTER_MAIN=${{ secrets.API_KEY_ROUTER_MAIN }}" >> .env
-          fi
-          if [ -n "${{ secrets.API_KEY_ROUTER_FALLBACK }}" ]; then
-            echo "API_KEY_ROUTER_FALLBACK=${{ secrets.API_KEY_ROUTER_FALLBACK }}" >> .env
-          fi
-          if [ -n "${{ secrets.API_KEY_ANSWER }}" ]; then
-            echo "API_KEY_ANSWER=${{ secrets.API_KEY_ANSWER }}" >> .env
-          fi
-          echo "=== .env contents (keys hidden) ==="
-          grep -v "KEY" .env || true
+          python3 << 'PYEOF'
+import os, re
+
+with open('.env.example') as f:
+    content = f.read()
+
+replacements = [
+    ('API_KEY_ROUTER_MAIN', os.environ.get('MAIN_KEY', '')),
+    ('API_KEY_ROUTER_FALLBACK', os.environ.get('FALLBACK_KEY', '')),
+    ('API_KEY_ANSWER', os.environ.get('ANSWER_KEY', '')),
+]
+
+for key, value in replacements:
+    if value:  # non-empty value from GitHub Secret
+        content = re.sub(
+            rf'^{key}=.*',
+            f'{key}={value}',
+            content,
+            flags=re.MULTILINE
+        )
+
+with open('.env', 'w') as f:
+    f.write(content)
+
+print('=== .env verification (keys hidden) ===')
+for line in content.strip().split('\n'):
+    if '=' in line and not line.startswith('#'):
+        print(line.split('=')[0] + '=****')
+PYEOF
       
       - name: Build with Gradle
         run: gradle assembleDebug --stacktrace --no-daemon
