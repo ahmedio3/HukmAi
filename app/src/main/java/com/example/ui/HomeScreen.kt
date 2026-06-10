@@ -346,10 +346,10 @@ fun CategoryItemCard(
             )
         }
         Icon(
-            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-            contentDescription = "Enter",
+            imageVector = Icons.Default.KeyboardArrowLeft,
+            contentDescription = "فتح",
             tint = IosTextSecondary,
-            modifier = Modifier.size(16.dp)
+            modifier = Modifier.size(20.dp)
         )
     }
 }
@@ -461,10 +461,10 @@ fun SearchResultCard(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                imageVector = Icons.Default.KeyboardArrowLeft,
                 contentDescription = null,
                 tint = IosTextSecondary,
-                modifier = Modifier.size(14.dp)
+                modifier = Modifier.size(18.dp)
             )
         }
         Spacer(modifier = Modifier.height(4.dp))
@@ -544,40 +544,98 @@ sealed class HtmlElement {
     data class Tip(val text: String) : HtmlElement()
 }
 
-// High performance regular expression parser for DIV tags
+/**
+ * Parser for the feqhia database HTML format.
+ * 
+ * The HTML uses <br/> as line separators and <span class="xxx"> tags for
+ * semantic elements like title-1, title-2, aaya (Quran), hadith, and tip.
+ * Lines without special spans are treated as regular paragraphs.
+ */
 fun parseHtmlToElements(html: String): List<HtmlElement> {
     if (html.isEmpty()) return emptyList()
-    
-    val regex = """<(div|p)(?:\s+class="([^"]+)")?>(.*?)</\1>""".toRegex(RegexOption.DOT_MATCHES_ALL)
+
     val list = mutableListOf<HtmlElement>()
-    
-    val matches = regex.findAll(html)
-    for (match in matches) {
-        val tag = match.groupValues[1]
-        val className = match.groupValues[2].trim()
-        val content = match.groupValues[3].trim()
-            .replace("<br\\s*/?>".toRegex(), "\n")
-            .replace("<[^>]*>".toRegex(), "") // Trim raw inner tags
-            
-        if (tag == "p") {
-            list.add(HtmlElement.Paragraph(content))
-        } else {
+
+    // Split the HTML into logical lines by <br/> tags
+    val lines = html.split(Regex("<br\\s*/?>"))
+
+    // Regex to match opening <span class="known-class">...</span> — non-greedy
+    val spanRegex = Regex(
+        """<span class="(title-1|title-2|aaya|hadith|tip)">(.*?)</span>""",
+        RegexOption.DOT_MATCHES_ALL
+    )
+    // Regex for other spans we may want to skip or treat as text (sora, etc)
+    val otherSpanRegex = Regex("""<span[^>]*>.*?</span>""", RegexOption.DOT_MATCHES_ALL)
+
+    for (line in lines) {
+        val trimmed = line.trim()
+        if (trimmed.isEmpty()) continue
+
+        // Check each line for known span tags
+        var lastEnd = 0
+        var hasKnownSpan = false
+
+        for (match in spanRegex.findAll(trimmed)) {
+            val before = trimmed.substring(lastEnd, match.range.first).trim()
+            // Emit text before this span as a paragraph (if non-empty)
+            if (before.isNotEmpty()) {
+                val cleanBefore = before
+                    .replace(otherSpanRegex, "")       // remove any other spans
+                    .replace(Regex("<[^>]*>"), "")     // strip remaining tags
+                    .trim()
+                if (cleanBefore.isNotEmpty()) {
+                    list.add(HtmlElement.Paragraph(cleanBefore))
+                }
+            }
+
+            val className = match.groupValues[1]
+            val rawContent = match.groupValues[2].trim()
+            // Clean inner content: strip any nested tags (like <a>, <i>)
+            val content = rawContent
+                .replace(Regex("<[^>]*>"), "")
+                .trim()
+
             when (className) {
-                "title-1" -> list.add(HtmlElement.Title1(content))
+                "title-1" -> {
+                    list.add(HtmlElement.Title1(content))
+                    // Add a small spacer after title-1
+                }
                 "title-2" -> list.add(HtmlElement.Title2(content))
-                "aaya" -> list.add(HtmlElement.Aaya(content))
-                "hadith" -> list.add(HtmlElement.Hadith(content))
-                "tip" -> list.add(HtmlElement.Tip(content))
-                else -> list.add(HtmlElement.Paragraph(content))
+                "aaya"     -> list.add(HtmlElement.Aaya(content))
+                "hadith"   -> list.add(HtmlElement.Hadith(content))
+                "tip"      -> list.add(HtmlElement.Tip(content))
+            }
+            hasKnownSpan = true
+            lastEnd = match.range.last + 1
+        }
+
+        // Any remaining text after the last known span
+        val after = trimmed.substring(lastEnd).trim()
+        if (after.isNotEmpty()) {
+            val cleanAfter = after
+                .replace(otherSpanRegex, "")
+                .replace(Regex("<[^>]*>"), "")
+                .trim()
+            if (cleanAfter.isNotEmpty()) {
+                list.add(HtmlElement.Paragraph(cleanAfter))
+            }
+        }
+
+        // If no known spans at all, treat the whole line as a plain paragraph
+        if (!hasKnownSpan) {
+            val cleanLine = trimmed
+                .replace(Regex("<[^>]*>"), "")
+                .trim()
+            if (cleanLine.isNotEmpty()) {
+                list.add(HtmlElement.Paragraph(cleanLine))
             }
         }
     }
-    
+
     if (list.isEmpty()) {
-        // Safe fallback in case regex matching is bypassed
-        list.add(HtmlElement.Paragraph(html.replace("<[^>]*>".toRegex(), "")))
+        list.add(HtmlElement.Paragraph(html.replace(Regex("<[^>]*>"), "")))
     }
-    
+
     return list
 }
 
