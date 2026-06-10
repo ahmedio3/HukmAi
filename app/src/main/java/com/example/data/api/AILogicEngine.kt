@@ -248,7 +248,7 @@ class AILogicEngine(
 
     private suspend fun callGeminiFinalStream(
         prompt: String,
-        onChunk: (String) -> Unit
+        onChunk: suspend (String) -> Unit
     ) {
         val model = "gemini-3.1-flash-lite"
         val request = GenerateContentRequest(
