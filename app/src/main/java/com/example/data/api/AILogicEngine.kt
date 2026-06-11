@@ -3,10 +3,8 @@ package com.example.data.api
 import com.example.BuildConfig
 import com.example.data.model.Article
 import com.example.data.model.TreeNode
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.withContext
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 
@@ -24,7 +22,6 @@ sealed class AiProgress {
     object GeneratingAnswer : AiProgress()
     data class Completed(val text: String, val sources: List<Article>) : AiProgress()
     data class Error(val error: String) : AiProgress()
-    data class Streaming(val text: String) : AiProgress()
 }
 
 class AILogicEngine(
@@ -174,29 +171,11 @@ class AILogicEngine(
                 $articlesContext
             """.trimIndent()
 
-            // Stream the final answer
-            var fullAnswer = ""
-            var streamError: String? = null
-            try {
-                callGeminiFinalStream(finalPrompt) { chunk ->
-                    fullAnswer += chunk
-                    emit(AiProgress.Streaming(fullAnswer))
-                }
-            } catch (e: Exception) {
-                streamError = e.message
-            }
-            
-            if (streamError != null) {
-                if (fullAnswer.isNotEmpty()) {
-                    // Partial answer available - emit as completed
-                    emit(AiProgress.Completed(fullAnswer, articles))
-                } else {
-                    emit(AiProgress.Error("حدث خطأ أثناء توليد الإجابة النهائية: ${streamError}"))
-                }
-            } else if (fullAnswer.isNotEmpty()) {
-                emit(AiProgress.Completed(fullAnswer, articles))
-            } else {
+            val finalAnswer = callGeminiFinal(finalPrompt)
+            if (finalAnswer == null) {
                 emit(AiProgress.Error("حدث خطأ أثناء توليد الإجابة النهائية."))
+            } else {
+                emit(AiProgress.Completed(finalAnswer, articles))
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -243,60 +222,6 @@ class AILogicEngine(
         } catch (e: Exception) {
             e.printStackTrace()
             null
-        }
-    }
-
-    private suspend fun callGeminiFinalStream(
-        prompt: String,
-        onChunk: suspend (String) -> Unit
-    ) {
-        val model = "gemini-3.1-flash-lite"
-        val request = GenerateContentRequest(
-            contents = listOf(Content(parts = listOf(Part(text = prompt)))),
-            generationConfig = GenerationConfig(temperature = 0.3f)
-        )
-        val key = BuildConfig.API_KEY_ANSWER
-        if (key.isEmpty()) throw Exception("API_KEY_ANSWER is not configured")
-
-        val response = RetrofitClient.service.streamGenerateContent(model, key, request)
-        if (!response.isSuccessful) {
-            throw Exception("API error: ${response.code()} ${response.message()}")
-        }
-
-        val body = response.body() ?: throw Exception("Empty response body")
-        
-        withContext(Dispatchers.IO) {
-            body.byteStream().bufferedReader().use { reader ->
-                var line: String?
-                while (reader.readLine().also { line = it } != null) {
-                    val ln = line ?: continue
-                    if (ln.startsWith("data: ")) {
-                        val jsonStr = ln.removePrefix("data: ").trim()
-                        if (jsonStr == "[DONE]") continue
-                        
-                        try {
-                            val json = org.json.JSONObject(jsonStr)
-                            val candidates = json.optJSONArray("candidates")
-                            if (candidates != null && candidates.length() > 0) {
-                                val content = candidates.getJSONObject(0).optJSONObject("content")
-                                if (content != null) {
-                                    val parts = content.optJSONArray("parts")
-                                    if (parts != null && parts.length() > 0) {
-                                        val text = parts.getJSONObject(0).optString("text", "")
-                                        if (text.isNotEmpty()) {
-                                            withContext(Dispatchers.Main) {
-                                                onChunk(text)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        } catch (_: Exception) {
-                            // Skip malformed JSON chunks
-                        }
-                    }
-                }
-            }
         }
     }
 }

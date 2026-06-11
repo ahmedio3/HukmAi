@@ -62,9 +62,6 @@ class FeqhViewModel(private val repository: FeqhRepository) : ViewModel() {
     private val _aiProgress = MutableStateFlow<com.example.data.api.AiProgress>(com.example.data.api.AiProgress.Idle)
     val aiProgress: StateFlow<com.example.data.api.AiProgress> = _aiProgress.asStateFlow()
 
-    private val _streamingText = MutableStateFlow<String?>(null)
-    val streamingText: StateFlow<String?> = _streamingText.asStateFlow()
-
     val chatMessages: StateFlow<List<ChatMessage>> = repository.getAllChatMessages()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -73,13 +70,11 @@ class FeqhViewModel(private val repository: FeqhRepository) : ViewModel() {
 
     fun clearAiState() {
         _aiProgress.value = com.example.data.api.AiProgress.Idle
-        _streamingText.value = null
     }
 
     fun clearChat() {
         viewModelScope.launch {
             repository.deleteAllChatMessages()
-            _streamingText.value = null
         }
     }
 
@@ -87,7 +82,6 @@ class FeqhViewModel(private val repository: FeqhRepository) : ViewModel() {
         if (_lastUserQuestion.isNotEmpty()) {
             viewModelScope.launch {
                 repository.deleteLastAiMessage()
-                _streamingText.value = null
                 submitAiQuestionInternal(_lastUserQuestion)
             }
         }
@@ -120,17 +114,12 @@ class FeqhViewModel(private val repository: FeqhRepository) : ViewModel() {
             // 1. Save user message
             val userMsg = ChatMessage(role = "user", content = trimmed)
             repository.insertChatMessage(userMsg)
-            _streamingText.value = null
 
             // 2. Run AI and save response
             aiLogicEngine.answerQuestion(trimmed).collect { progress ->
                 _aiProgress.value = progress
                 when (progress) {
-                    is com.example.data.api.AiProgress.Streaming -> {
-                        _streamingText.value = progress.text
-                    }
                     is com.example.data.api.AiProgress.Completed -> {
-                        _streamingText.value = null
                         val sourcesJson = if (progress.sources.isNotEmpty()) {
                             JSONArray(progress.sources.map { it.id }).toString()
                         } else null
@@ -143,7 +132,6 @@ class FeqhViewModel(private val repository: FeqhRepository) : ViewModel() {
                         _aiProgress.value = com.example.data.api.AiProgress.Idle
                     }
                     is com.example.data.api.AiProgress.Error -> {
-                        _streamingText.value = null
                         val errorMsg = ChatMessage(
                             role = "ai",
                             content = "⚠️ ${progress.error}"
@@ -152,7 +140,6 @@ class FeqhViewModel(private val repository: FeqhRepository) : ViewModel() {
                         _aiProgress.value = com.example.data.api.AiProgress.Idle
                     }
                     is com.example.data.api.AiProgress.OutOfScope -> {
-                        _streamingText.value = null
                         val outMsg = ChatMessage(
                             role = "ai",
                             content = progress.reason
