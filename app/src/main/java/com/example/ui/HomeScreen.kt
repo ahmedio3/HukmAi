@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -1134,7 +1135,6 @@ fun AiChatMessage(
     onViewSources: () -> Unit,
     onRetry: () -> Unit
 ) {
-    val formattedText = remember(message) { parseAiResponse(message) }
     val timeText = remember(timestamp) { formatTimestamp(timestamp) }
 
     Column(
@@ -1153,7 +1153,7 @@ fun AiChatMessage(
                     modifier = Modifier
                         .widthIn(max = 300.dp)
                         .background(
-                            Color(0xFFFFEBEE), // Light red background
+                            Color(0xFFFFEBEE),
                             shape = RoundedCornerShape(12.dp)
                         )
                         .padding(horizontal = 14.dp, vertical = 10.dp)
@@ -1169,7 +1169,6 @@ fun AiChatMessage(
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
-            // Retry button
             TextButton(
                 onClick = onRetry,
                 modifier = Modifier.padding(start = 4.dp)
@@ -1182,19 +1181,73 @@ fun AiChatMessage(
                 )
             }
         } else {
-            // Normal AI message with formatted text
-            Text(
-                text = formattedText,
-                color = IosTextPrimary,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontSize = 16.sp,
-                    lineHeight = 28.sp,
-                    textAlign = TextAlign.Justify
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp)
-            )
+            // Extract خلاصة القول section
+            val (summary, remainingText) = remember(message) { extractSummarySection(message) }
+            val formattedMainText = remember(remainingText) { parseAiResponse(remainingText) }
+
+            // Show خلاصة القول in a nice card if present
+            if (summary != null) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFFF5F0E8) // Warm beige
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Lightbulb,
+                                contentDescription = null,
+                                tint = Color(0xFFD4A84B),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "خلاصة القول",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = IosTextPrimary
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = parseAiResponse(summary),
+                            color = IosTextPrimary,
+                            fontSize = 15.sp,
+                            lineHeight = 26.sp,
+                            textAlign = TextAlign.Justify
+                        )
+                    }
+                }
+            }
+
+            // Main AI response text with ClickableText for citations
+            if (remainingText.isNotEmpty()) {
+                ClickableText(
+                    text = formattedMainText,
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontSize = 16.sp,
+                        lineHeight = 28.sp,
+                        textAlign = TextAlign.Justify,
+                        color = IosTextPrimary
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp),
+                    onClick = { offset ->
+                        formattedMainText.getStringAnnotations("citation", offset, offset)
+                            .firstOrNull()?.let {
+                                onViewSources()
+                            }
+                    }
+                )
+            }
 
             // Sources button (if available)
             if (sourcesJson != null && sourcesJson != "[]" && sourcesJson != "null") {
@@ -1491,7 +1544,8 @@ fun SettingsTabScreen() {
 
 // ==========================================
 // AI RESPONSE TEXT PARSER
-// Formats: **bold**, ((hadith)) → blue, ﴿quran﴾ → green, [citation] → gray
+// Formats: **bold**, ((hadith)) → blue, ﴿quran﴾ → green
+// [citation] → small text with gray background + clickable annotation
 // ==========================================
 private fun parseAiResponse(text: String): AnnotatedString {
     return buildAnnotatedString {
@@ -1503,7 +1557,9 @@ private fun parseAiResponse(text: String): AnnotatedString {
                 if (end != -1) {
                     val content = text.substring(i + 2, end)
                     withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                        pushStringAnnotation("bold", content)
                         append(content)
+                        pop()
                     }
                     i = end + 2
                     continue
@@ -1515,7 +1571,9 @@ private fun parseAiResponse(text: String): AnnotatedString {
                 if (end != -1) {
                     val content = text.substring(i + 2, end)
                     withStyle(SpanStyle(color = Color(0xFF007AFF), fontWeight = FontWeight.Medium)) {
+                        pushStringAnnotation("hadith", content)
                         append(content)
+                        pop()
                     }
                     i = end + 2
                     continue
@@ -1527,19 +1585,30 @@ private fun parseAiResponse(text: String): AnnotatedString {
                 if (end != -1) {
                     val content = text.substring(i + 1, end)
                     withStyle(SpanStyle(color = Color(0xFF34C759), fontWeight = FontWeight.Medium)) {
+                        pushStringAnnotation("quran", content)
                         append(content)
+                        pop()
                     }
                     i = end + 1
                     continue
                 }
             }
-            // Check for citation [
+            // Check for citation [ ... ] → small text, gray bg, clickable
             if (text.startsWith("[", i)) {
                 val end = text.indexOf("]", i + 1)
                 if (end != -1) {
                     val content = text.substring(i + 1, end)
-                    withStyle(SpanStyle(color = Color(0xFF8E8E93), fontStyle = FontStyle.Italic)) {
-                        append("[$content]")
+                    val citationText = "[$content]"
+                    withStyle(
+                        SpanStyle(
+                            fontSize = 13.sp,
+                            color = Color(0xFF636366),
+                            background = Color(0xFFE8E8ED)
+                        )
+                    ) {
+                        pushStringAnnotation("citation", content)
+                        append(citationText)
+                        pop()
                     }
                     i = end + 1
                     continue
@@ -1549,6 +1618,36 @@ private fun parseAiResponse(text: String): AnnotatedString {
             i++
         }
     }
+}
+
+/**
+ * Extracts the "خلاصة القول" section from the AI response if present.
+ * Returns the summary text (without the "خلاصة القول:" header) and the remaining text.
+ */
+private fun extractSummarySection(text: String): Pair<String?, String> {
+    val summaryMarker = "**خلاصة القول:**"
+    val index = text.indexOf(summaryMarker)
+    if (index == -1) return Pair(null, text)
+
+    val afterMarker = text.substring(index + summaryMarker.length).trimStart()
+
+    // Find the next bold section or two newlines
+    val nextBold = Regex("""\*\*[^*]+\*\*""").find(afterMarker)
+    val nextDoubleNewline = afterMarker.indexOf("\n\n")
+
+    val endIndex = when {
+        nextBold != null && nextDoubleNewline != -1 -> minOf(nextBold.range.first, nextDoubleNewline)
+        nextBold != null -> nextBold.range.first
+        nextDoubleNewline != -1 -> nextDoubleNewline
+        else -> afterMarker.length
+    }
+
+    val summary = afterMarker.substring(0, endIndex).trim()
+    val remaining = if (endIndex < afterMarker.length) {
+        "${summaryMarker}\n\n${afterMarker.substring(endIndex).trim()}"
+    } else ""
+
+    return Pair(summary, remaining)
 }
 
 // ==========================================
