@@ -28,9 +28,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -1604,17 +1601,9 @@ private fun parseAiResponse(text: String): AnnotatedString {
                     val citationText = "[$content]"
                     withStyle(
                         SpanStyle(
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
                             color = Color(0xFF636366),
-                            letterSpacing = (-0.3).sp,
-                            drawBehind = {
-                                drawRoundRect(
-                                    color = Color(0xFFE8E8ED),
-                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(8f, 8f),
-                                    size = Size(size.width + 10f, size.height + 4f),
-                                    topLeft = Offset(-5f, -2f)
-                                )
-                            }
+                            background = Color(0xFFE8E8ED)
                         )
                     ) {
                         pushStringAnnotation("citation", content)
