@@ -28,12 +28,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -843,6 +846,7 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
     val listState = rememberLazyListState()
     val isAiThinking = aiProgress !is com.example.data.api.AiProgress.Idle
     val coroutineScope = rememberCoroutineScope()
+    var showMenu by remember { mutableStateOf(false) }
 
     // Auto-scroll to bottom when new messages arrive or progress changes
     LaunchedEffect(chatMessages.size, aiProgress) {
@@ -850,6 +854,330 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
             delay(100)
             listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
         }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(IosBackground)
+    ) {
+        // ── Main Content Column ──
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            // Status bar gradient overlay
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color(0xCC000000), Color(0x00000000)),
+                            startY = 0f,
+                            endY = 48f * 1.5f
+                        )
+                    )
+            )
+
+            // Messages area
+            Box(modifier = Modifier.weight(1f)) {
+                if (chatMessages.isEmpty() && !isAiThinking) {
+                    // Empty state
+                    Column(
+                        modifier = Modifier.align(Alignment.Center),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = Color(0xFF007AFF),
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "اسأل المفتي الذكي أي سؤال فقهي،\nوسيجيبك بالاعتماد على الموسوعة الفقهية فقط.",
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodyLarge.copy(color = IosTextSecondary)
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 12.dp),
+                        contentPadding = PaddingValues(top = 12.dp, bottom = 80.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        itemsIndexed(chatMessages) { index, msg ->
+                            if (msg.role == "user") {
+                                UserChatBubble(
+                                    message = msg.content,
+                                    timestamp = msg.timestamp
+                                )
+                            } else {
+                                val isError = msg.content.startsWith("⚠️")
+                                AiChatMessage(
+                                    message = msg.content,
+                                    sourcesJson = if (!isError) msg.sourcesJson else null,
+                                    timestamp = msg.timestamp,
+                                    isError = isError,
+                                    onViewSources = {
+                                        coroutineScope.launch {
+                                            val articles = viewModel.loadSourcesFromJson(msg.sourcesJson)
+                                            if (articles.isNotEmpty()) {
+                                                sourcesForSheet = articles
+                                                showSourcesSheet = true
+                                            }
+                                        }
+                                    },
+                                    onRetry = { viewModel.retryLastQuestion() }
+                                )
+                            }
+                        }
+                        if (isAiThinking) {
+                            item {
+                                AiThinkingIndicator(progress = aiProgress)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Floating Menu Button (top-left) ──
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(top = 10.dp, start = 12.dp)
+                .size(34.dp)
+                .background(Color.Black.copy(alpha = 0.08f), shape = CircleShape)
+                .clickable { showMenu = !showMenu },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Default.Menu,
+                contentDescription = "القائمة",
+                tint = Color(0xFF8E8E93),
+                modifier = Modifier.size(18.dp)
+            )
+        }
+
+        // ── Popover Menu ──
+        if (showMenu) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(top = 50.dp, start = 12.dp)
+            ) {
+                LaunchedEffect(Unit) {
+                    // Trigger enter animation via AnimatedVisibility
+                }
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = showMenu,
+                    enter = androidx.compose.animation.fadeIn(
+                        animationSpec = androidx.compose.animation.core.tween(200)
+                    ) + androidx.compose.animation.scaleIn(
+                        initialScale = 0.85f,
+                        animationSpec = androidx.compose.animation.core.tween(200)
+                    ),
+                    exit = androidx.compose.animation.fadeOut(
+                        animationSpec = androidx.compose.animation.core.tween(150)
+                    ) + androidx.compose.animation.scaleOut(
+                        targetScale = 0.85f,
+                        animationSpec = androidx.compose.animation.core.tween(150)
+                    )
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = IosSurface,
+                        shadowElevation = 8.dp
+                    ) {
+                        Column {
+                            TextButton(
+                                onClick = {
+                                    viewModel.clearChat()
+                                    showMenu = false
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    Icons.Default.DeleteSweep,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFF3B30),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = "حذف المحادثة",
+                                    color = Color(0xFFFF3B30),
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 14.sp
+                                )
+                            }
+                            // Future items can be added here easily
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── Floating Input Pill (bottom) ──
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .navigationBarsPadding()
+        ) {
+            Surface(
+                shape = RoundedCornerShape(28.dp),
+                color = Color.White.copy(alpha = 0.92f),
+                shadowElevation = 6.dp
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 4.dp, top = 3.dp, bottom = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Text input field
+                    Box(modifier = Modifier.weight(1f)) {
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = questionText,
+                            onValueChange = { questionText = it },
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                color = IosTextPrimary,
+                                fontSize = 16.sp
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 24.dp, max = 80.dp)
+                                .padding(vertical = 8.dp),
+                            decorationBox = { innerTextField ->
+                                if (questionText.isEmpty()) {
+                                    Text(
+                                        text = "اسأل المفتي الذكي...",
+                                        style = MaterialTheme.typography.bodyLarge.copy(
+                                            color = IosTextSecondary,
+                                            fontSize = 16.sp
+                                        )
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
+                    // Send button — integrated inside the field (RIGHT side)
+                    val canSend = questionText.isNotBlank() && !isAiThinking
+                    val scaleAnim = remember { androidx.compose.animation.core.Animatable(1f) }
+
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .graphicsLayer {
+                                scaleX = scaleAnim.value
+                                scaleY = scaleAnim.value
+                                alpha = if (canSend) 1f else 0.4f
+                            }
+                            .background(
+                                if (canSend) {
+                                    Brush.linearGradient(
+                                        colors = listOf(Color(0xFF007AFF), Color(0xFF0055CC))
+                                    )
+                                } else Color(0xFFC7C7CC),
+                                shape = CircleShape
+                            )
+                            .clickable(
+                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                indication = null,
+                                enabled = canSend
+                            ) {
+                                coroutineScope.launch {
+                                    // Scale down then up
+                                    scaleAnim.snapTo(1f)
+                                    scaleAnim.animateTo(
+                                        0.8f,
+                                        androidx.compose.animation.core.tween(80)
+                                    )
+                                    scaleAnim.animateTo(
+                                        1.05f,
+                                        androidx.compose.animation.core.tween(100)
+                                    )
+                                    scaleAnim.animateTo(
+                                        1f,
+                                        androidx.compose.animation.core.tween(60)
+                                    )
+                                }
+                                focusManager.clearFocus()
+                                viewModel.submitAiQuestion(questionText)
+                                questionText = ""
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.ArrowUpward,
+                            contentDescription = "إرسال",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── Sources Bottom Sheet ──
+        if (showSourcesSheet && sourcesForSheet.isNotEmpty()) {
+            ModalBottomSheet(
+                onDismissRequest = { showSourcesSheet = false },
+                containerColor = IosSurface
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .padding(bottom = 32.dp)
+                ) {
+                    Text(
+                        text = "المصادر المعتمدة",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = IosTextPrimary
+                        ),
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                    sourcesForSheet.forEach { src ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    showSourcesSheet = false
+                                    src.id?.let { viewModel.openArticle(it) }
+                                }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Outlined.MenuBook,
+                                contentDescription = null,
+                                tint = Color(0xFF007AFF),
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = src.title ?: "مصدر غير معروف",
+                                style = MaterialTheme.typography.bodyMedium.copy(color = IosTextPrimary)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
     }
 
     Column(
