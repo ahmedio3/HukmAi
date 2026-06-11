@@ -83,7 +83,11 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
                     } else {
                         IosBackground
                     }
-                    window.statusBarColor = androidx.compose.ui.graphics.toArgb(color)
+                    window.statusBarColor = android.graphics.Color.rgb(
+                        (color.red * 255).toInt(),
+                        (color.green * 255).toInt(),
+                        (color.blue * 255).toInt()
+                    )
                     val controller = androidx.core.view.WindowCompat.getInsetsController(window, view)
                     controller.isAppearanceLightStatusBars = true
                 }
