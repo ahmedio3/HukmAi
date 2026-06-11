@@ -917,10 +917,8 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                                     if (articles.isNotEmpty()) {
                                         sourcesForSheet = articles
                                         showSourcesSheet = true
-    }
-    }
-}
-
+                                    }
+                                }
                             },
                             onRetry = { viewModel.retryLastQuestion() }
                         )
