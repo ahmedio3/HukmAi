@@ -6,7 +6,6 @@ import androidx.room.Query
 import androidx.room.RawQuery
 import androidx.sqlite.db.SupportSQLiteQuery
 import com.example.data.model.Article
-import com.example.data.model.ChatMessage
 import com.example.data.model.TreeNode
 import kotlinx.coroutines.flow.Flow
 
@@ -55,19 +54,4 @@ interface FeqhDao {
     @Query("SELECT * FROM articles WHERE title LIKE :likeQuery OR text LIKE :likeQuery")
     suspend fun searchArticlesLike(likeQuery: String): List<Article>
 
-    // ---- Chat Messages ----
-    @Query("SELECT * FROM chat_messages ORDER BY timestamp ASC")
-    fun getAllChatMessages(): Flow<List<ChatMessage>>
-
-    @Query("SELECT * FROM chat_messages ORDER BY timestamp ASC")
-    suspend fun getAllChatMessagesSync(): List<ChatMessage>
-
-    @Insert
-    suspend fun insertChatMessage(message: ChatMessage)
-
-    @Query("DELETE FROM chat_messages WHERE id = (SELECT id FROM chat_messages WHERE role = 'ai' ORDER BY timestamp DESC LIMIT 1)")
-    suspend fun deleteLastAiMessage()
-
-    @Query("DELETE FROM chat_messages")
-    suspend fun deleteAllChatMessages()
 }

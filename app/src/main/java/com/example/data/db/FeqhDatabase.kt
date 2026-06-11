@@ -6,10 +6,9 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.example.data.dao.FeqhDao
 import com.example.data.model.Article
-import com.example.data.model.ChatMessage
 import com.example.data.model.TreeNode
 
-@Database(entities = [Article::class, TreeNode::class, ChatMessage::class], version = 2, exportSchema = false)
+@Database(entities = [Article::class, TreeNode::class], version = 2, exportSchema = false)
 abstract class FeqhDatabase : RoomDatabase() {
     abstract fun feqhDao(): FeqhDao
 

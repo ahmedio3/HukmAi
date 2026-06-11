@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.provider.FontRequest
 import androidx.core.provider.FontsContractCompat
 import com.example.data.db.FeqhDatabase
+import com.example.data.db.ChatDatabase
 import com.example.data.repository.FeqhRepository
 import com.example.ui.MainAppScreen
 import com.example.ui.theme.MyApplicationTheme
@@ -29,7 +30,8 @@ import com.example.viewmodel.FeqhViewModel
 class MainActivity : ComponentActivity() {
 
     private val database by lazy { FeqhDatabase.getDatabase(applicationContext) }
-    private val repository by lazy { FeqhRepository(database.feqhDao()) }
+    private val chatDatabase by lazy { ChatDatabase.getDatabase(applicationContext) }
+    private val repository by lazy { FeqhRepository(database.feqhDao(), chatDatabase.chatDao()) }
     
     private val viewModel: FeqhViewModel by viewModels {
         FeqhViewModel.Factory(repository)

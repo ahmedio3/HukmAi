@@ -52,6 +52,7 @@ import com.example.viewmodel.FeqhViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun MainAppScreen(viewModel: FeqhViewModel) {
     val currentTab by viewModel.currentTab.collectAsState()
@@ -71,12 +72,32 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
             BackHandler { viewModel.clearSearch() }
         }
 
+        val view = androidx.compose.ui.platform.LocalView.current
+        val context = view.context
+        if (!view.isInEditMode) {
+            SideEffect {
+                val window = (context as? android.app.Activity)?.window
+                if (window != null) {
+                    val color = if (activeArticle != null || currentTab == AppTab.AI) {
+                        IosSurface
+                    } else {
+                        IosBackground
+                    }
+                    window.statusBarColor = androidx.compose.ui.graphics.toArgb(color)
+                    val controller = androidx.core.view.WindowCompat.getInsetsController(window, view)
+                    controller.isAppearanceLightStatusBars = true
+                }
+            }
+        }
+
         Scaffold(
             bottomBar = {
-                ElegantBottomBar(
-                    currentTab = currentTab,
-                    onTabSelected = { viewModel.setTab(it) }
-                )
+                if (!androidx.compose.foundation.layout.WindowInsets.isImeVisible) {
+                    ElegantBottomBar(
+                        currentTab = currentTab,
+                        onTabSelected = { viewModel.setTab(it) }
+                    )
+                }
             },
             containerColor = BookParchmentBg,
             modifier = Modifier.fillMaxSize()
@@ -826,45 +847,38 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Column(
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(IosBackground)
+            .imePadding()
+    ) {
+        // iOS-style nav bar with title
+        Row(
             modifier = Modifier
-                .fillMaxSize()
-                .background(IosBackground)
+                .fillMaxWidth()
+                .background(IosSurface)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // iOS-style header with white background extending behind status bar
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(IosSurface)
-            ) {
-                // Status bar spacer (gives the white bg behind status bar)
-                Spacer(modifier = Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "المفتي الذكي",
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = IosTextPrimary
-                        ),
-                        modifier = Modifier.weight(1f)
-                    )
-                    if (chatMessages.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.clearChat() }) {
-                            Icon(Icons.Default.DeleteSweep, contentDescription = "مسح المحادثة", tint = Color(0xFF007AFF))
-                        }
-                    }
+            Text(
+                text = "المفتي الذكي",
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = IosTextPrimary
+                ),
+                modifier = Modifier.weight(1f)
+            )
+            if (chatMessages.isNotEmpty()) {
+                IconButton(onClick = { viewModel.clearChat() }) {
+                    Icon(Icons.Default.DeleteSweep, contentDescription = "مسح المحادثة", tint = Color(0xFF007AFF))
                 }
             }
-            HorizontalDivider(color = IosSeparator, thickness = 0.5.dp)
+        }
+        HorizontalDivider(color = IosSeparator, thickness = 0.5.dp)
 
-            // Messages list
-            if (chatMessages.isEmpty() && !isAiThinking) {
+        // Messages list
+        if (chatMessages.isEmpty() && !isAiThinking) {
             // Empty state
             Box(
                 modifier = Modifier
@@ -934,49 +948,18 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
             }
         }
 
-        // Input bar with send button on RIGHT
+        // Floating input bar
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(IosSurface)
-                .padding(bottom = 6.dp)
+                .background(Color.Transparent)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.Bottom
             ) {
-                // Text input
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .background(Color(0xFFE2E2E7), shape = RoundedCornerShape(20.dp))
-                        .padding(horizontal = 16.dp, vertical = 2.dp)
-                ) {
-                    androidx.compose.foundation.text.BasicTextField(
-                        value = questionText,
-                        onValueChange = { questionText = it },
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = IosTextPrimary),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 20.dp, max = 100.dp)
-                            .padding(vertical = 10.dp),
-                        decorationBox = { innerTextField ->
-                            if (questionText.isEmpty()) {
-                                Text(
-                                    text = "اسأل المفتي الذكي...",
-                                    style = MaterialTheme.typography.bodyLarge.copy(color = IosTextSecondary)
-                                )
-                            }
-                            innerTextField()
-                        }
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                // Send button on RIGHT
+                // Send button (first child = rightmost in RTL)
                 val canSend = questionText.isNotBlank() && !isAiThinking
                 Box(
                     modifier = Modifier
@@ -999,9 +982,39 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                         modifier = Modifier.size(20.dp)
                     )
                 }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Floating white text input (second child = leftmost in RTL)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(Color.White, shape = RoundedCornerShape(20.dp))
+                        .border(0.5.dp, IosSeparator, RoundedCornerShape(20.dp))
+                        .padding(horizontal = 16.dp, vertical = 2.dp)
+                ) {
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = questionText,
+                        onValueChange = { questionText = it },
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = IosTextPrimary),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 20.dp, max = 100.dp)
+                            .padding(vertical = 10.dp),
+                        decorationBox = { innerTextField ->
+                            if (questionText.isEmpty()) {
+                                Text(
+                                    text = "اسأل المفتي الذكي...",
+                                    style = MaterialTheme.typography.bodyLarge.copy(color = IosTextSecondary)
+                                )
+                            }
+                            innerTextField()
+                        }
+                    )
+                }
             }
         }
-        }
+    }
 
     // Sources Bottom Sheet
     if (showSourcesSheet && sourcesForSheet.isNotEmpty()) {
@@ -1065,7 +1078,6 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                 }
             }
         }
-    }
     }
 }
 
