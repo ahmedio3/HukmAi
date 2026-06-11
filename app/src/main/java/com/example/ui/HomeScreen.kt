@@ -28,6 +28,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -981,7 +984,7 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.AutoMirrored.Filled.Send,
+                        Icons.Filled.ArrowUpward,
                         contentDescription = "إرسال",
                         tint = Color.White,
                         modifier = Modifier.size(20.dp)
@@ -1259,25 +1262,25 @@ fun AiChatMessage(
                     horizontalArrangement = Arrangement.Start
                 ) {
                     Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFFF2F2F7),
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFFE8F5E9),
                         modifier = Modifier.clickable { onViewSources() }
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                Icons.AutoMirrored.Outlined.MenuBook,
+                                Icons.Default.MenuBook,
                                 contentDescription = null,
-                                tint = Color(0xFF007AFF),
-                                modifier = Modifier.size(14.dp)
+                                tint = Color(0xFF2E7D32),
+                                modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "المصادر",
                                 style = MaterialTheme.typography.bodyMedium.copy(
-                                    color = Color(0xFF007AFF),
+                                    color = Color(0xFF2E7D32),
                                     fontWeight = FontWeight.Medium
                                 )
                             )
@@ -1285,8 +1288,8 @@ fun AiChatMessage(
                             Icon(
                                 Icons.Filled.KeyboardArrowLeft,
                                 contentDescription = null,
-                                tint = Color(0xFF007AFF),
-                                modifier = Modifier.size(14.dp)
+                                tint = Color(0xFF2E7D32),
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }
@@ -1584,7 +1587,7 @@ private fun parseAiResponse(text: String): AnnotatedString {
                 val end = text.indexOf("\uFDF1", i + 1)
                 if (end != -1) {
                     val content = text.substring(i + 1, end)
-                    withStyle(SpanStyle(color = Color(0xFF34C759), fontWeight = FontWeight.Medium)) {
+                    withStyle(SpanStyle(color = Color(0xFFD32F2F), fontWeight = FontWeight.Medium)) {
                         pushStringAnnotation("quran", content)
                         append(content)
                         pop()
@@ -1593,7 +1596,7 @@ private fun parseAiResponse(text: String): AnnotatedString {
                     continue
                 }
             }
-            // Check for citation [ ... ] → small text, gray bg, clickable
+            // Check for citation [ ... ] → small rounded pill, clickable
             if (text.startsWith("[", i)) {
                 val end = text.indexOf("]", i + 1)
                 if (end != -1) {
@@ -1601,9 +1604,17 @@ private fun parseAiResponse(text: String): AnnotatedString {
                     val citationText = "[$content]"
                     withStyle(
                         SpanStyle(
-                            fontSize = 13.sp,
+                            fontSize = 10.sp,
                             color = Color(0xFF636366),
-                            background = Color(0xFFE8E8ED)
+                            letterSpacing = (-0.3).sp,
+                            drawBehind = {
+                                drawRoundRect(
+                                    color = Color(0xFFE8E8ED),
+                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(8f, 8f),
+                                    size = Size(size.width + 10f, size.height + 4f),
+                                    topLeft = Offset(-5f, -2f)
+                                )
+                            }
                         )
                     ) {
                         pushStringAnnotation("citation", content)
@@ -1625,26 +1636,34 @@ private fun parseAiResponse(text: String): AnnotatedString {
  * Returns the summary text (without the "خلاصة القول:" header) and the remaining text.
  */
 private fun extractSummarySection(text: String): Pair<String?, String> {
-    val summaryMarker = "**خلاصة القول:**"
+    // Try both forms: with and without bold markers
+    val summaryMarker = "خلاصة القول"
     val index = text.indexOf(summaryMarker)
     if (index == -1) return Pair(null, text)
 
-    val afterMarker = text.substring(index + summaryMarker.length).trimStart()
+    // Find where the summary content starts (after the colon)
+    val colonIndex = text.indexOf(":", index)
+    if (colonIndex == -1) return Pair(null, text)
 
-    // Find the next bold section or two newlines
-    val nextBold = Regex("""\*\*[^*]+\*\*""").find(afterMarker)
-    val nextDoubleNewline = afterMarker.indexOf("\n\n")
+    val afterColon = text.substring(colonIndex + 1).trimStart()
+
+    // Find the next bold section (other than خلاصة القول itself) or double newline
+    val nextBold = Regex("""\*\*(?!خلاصة القول)[^*]+\*\*""").find(afterColon)
+    val nextDoubleNewline = afterColon.indexOf("\n\n")
 
     val endIndex = when {
         nextBold != null && nextDoubleNewline != -1 -> minOf(nextBold.range.first, nextDoubleNewline)
         nextBold != null -> nextBold.range.first
         nextDoubleNewline != -1 -> nextDoubleNewline
-        else -> afterMarker.length
+        else -> afterColon.length
     }
 
-    val summary = afterMarker.substring(0, endIndex).trim()
-    val remaining = if (endIndex < afterMarker.length) {
-        "${summaryMarker}\n\n${afterMarker.substring(endIndex).trim()}"
+    val summary = afterColon.substring(0, endIndex).trim()
+    if (summary.isEmpty()) return Pair(null, text)
+
+    // Remaining text: everything after the summary section
+    val remaining = if (endIndex < afterColon.length) {
+        afterColon.substring(endIndex).trim()
     } else ""
 
     return Pair(summary, remaining)
