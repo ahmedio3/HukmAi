@@ -1001,7 +1001,7 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                 }
             }
         }
-    }
+        }
 
     // Sources Bottom Sheet
     if (showSourcesSheet && sourcesForSheet.isNotEmpty()) {
@@ -1065,6 +1065,7 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                 }
             }
         }
+    }
     }
 }
 
