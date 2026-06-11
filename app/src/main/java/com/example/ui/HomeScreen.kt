@@ -1259,25 +1259,25 @@ fun AiChatMessage(
                     horizontalArrangement = Arrangement.Start
                 ) {
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = Color(0xFFE8F5E9),
+                        shape = RoundedCornerShape(999.dp),  // Fully rounded pill
+                        color = Color(0xFFC8E6C9),  // Slightly darker green
                         modifier = Modifier.clickable { onViewSources() }
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
                                 Icons.Default.MenuBook,
                                 contentDescription = null,
-                                tint = Color(0xFF2E7D32),
+                                tint = Color(0xFF1B5E20),
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "المصادر",
                                 style = MaterialTheme.typography.bodyMedium.copy(
-                                    color = Color(0xFF2E7D32),
+                                    color = Color(0xFF1B5E20),
                                     fontWeight = FontWeight.Medium
                                 )
                             )
@@ -1285,7 +1285,7 @@ fun AiChatMessage(
                             Icon(
                                 Icons.Filled.KeyboardArrowLeft,
                                 contentDescription = null,
-                                tint = Color(0xFF2E7D32),
+                                tint = Color(0xFF1B5E20),
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -1544,8 +1544,12 @@ fun SettingsTabScreen() {
 
 // ==========================================
 // AI RESPONSE TEXT PARSER
-// Formats: **bold**, ((hadith)) → blue, ﴿quran﴾ → green
-// [citation] → small text with gray background + clickable annotation
+// The AI uses special markers:
+//   **bold**       → Bold text
+//   ((hadith))     → Blue text (hadith quotes)
+//   ﴿quran﴾       → Red text (quran verses)
+//   ££citation££   → Gray text (citations / تخريجات / هوامش)
+//   §§summary§§    → Extracted into خلاصة القول card (handled before this)
 // ==========================================
 private fun parseAiResponse(text: String): AnnotatedString {
     return buildAnnotatedString {
@@ -1593,24 +1597,17 @@ private fun parseAiResponse(text: String): AnnotatedString {
                     continue
                 }
             }
-            // Check for citation [ ... ] → small rounded pill, clickable
-            if (text.startsWith("[", i)) {
-                val end = text.indexOf("]", i + 1)
+            // Check for citation ££...££ → gray text (no bg, normal size)
+            if (text.startsWith("££", i)) {
+                val end = text.indexOf("££", i + 2)
                 if (end != -1) {
-                    val content = text.substring(i + 1, end)
-                    val citationText = "[$content]"
-                    withStyle(
-                        SpanStyle(
-                            fontSize = 11.sp,
-                            color = Color(0xFF636366),
-                            background = Color(0xFFE8E8ED)
-                        )
-                    ) {
+                    val content = text.substring(i + 2, end)
+                    withStyle(SpanStyle(color = Color(0xFF8E8E93))) {
                         pushStringAnnotation("citation", content)
-                        append(citationText)
+                        append(content)
                         pop()
                     }
-                    i = end + 1
+                    i = end + 2
                     continue
                 }
             }
@@ -1621,40 +1618,23 @@ private fun parseAiResponse(text: String): AnnotatedString {
 }
 
 /**
- * Extracts the "خلاصة القول" section from the AI response if present.
- * Returns the summary text (without the "خلاصة القول:" header) and the remaining text.
+ * Extracts the خلاصة القول section from §§...§§ markers.
+ * Returns (summaryText, remainingTextWithoutMarkers).
  */
 private fun extractSummarySection(text: String): Pair<String?, String> {
-    // Try both forms: with and without bold markers
-    val summaryMarker = "خلاصة القول"
-    val index = text.indexOf(summaryMarker)
-    if (index == -1) return Pair(null, text)
+    val marker = "§§"
+    val startIndex = text.indexOf(marker)
+    if (startIndex == -1) return Pair(null, text)
 
-    // Find where the summary content starts (after the colon)
-    val colonIndex = text.indexOf(":", index)
-    if (colonIndex == -1) return Pair(null, text)
+    val contentStart = startIndex + marker.length
+    val endIndex = text.indexOf(marker, contentStart)
+    if (endIndex == -1) return Pair(null, text)
 
-    val afterColon = text.substring(colonIndex + 1).trimStart()
-
-    // Find the next bold section (other than خلاصة القول itself) or double newline
-    val nextBold = Regex("""\*\*(?!خلاصة القول)[^*]+\*\*""").find(afterColon)
-    val nextDoubleNewline = afterColon.indexOf("\n\n")
-
-    val endIndex = when {
-        nextBold != null && nextDoubleNewline != -1 -> minOf(nextBold.range.first, nextDoubleNewline)
-        nextBold != null -> nextBold.range.first
-        nextDoubleNewline != -1 -> nextDoubleNewline
-        else -> afterColon.length
-    }
-
-    val summary = afterColon.substring(0, endIndex).trim()
+    val summary = text.substring(contentStart, endIndex).trim()
     if (summary.isEmpty()) return Pair(null, text)
 
-    // Remaining text: everything after the summary section
-    val remaining = if (endIndex < afterColon.length) {
-        afterColon.substring(endIndex).trim()
-    } else ""
-
+    // Remove the §§...§§ section from the text
+    val remaining = (text.substring(0, startIndex) + text.substring(endIndex + marker.length)).trim()
     return Pair(summary, remaining)
 }
 
