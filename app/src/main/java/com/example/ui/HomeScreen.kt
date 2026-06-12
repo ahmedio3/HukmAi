@@ -863,10 +863,10 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
             .imePadding()
     ) {
         // Messages area — fills all space above input
-        Box(modifier = Modifier.weight(1f)) {
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (chatMessages.isEmpty() && !isAiThinking) {
                 Column(
-                    modifier = Modifier.align(Alignment.Center),
+                    modifier = Modifier.align(Alignment.Center).fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Icon(
@@ -939,40 +939,10 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 48.dp)
-                    .padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                    .padding(start = 4.dp, end = 16.dp, top = 4.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Text input field
-                Box(modifier = Modifier.weight(1f)) {
-                    androidx.compose.foundation.text.BasicTextField(
-                        value = questionText,
-                        onValueChange = { questionText = it },
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(
-                            color = IosTextPrimary,
-                            fontSize = 16.sp
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 24.dp, max = 80.dp)
-                            .padding(vertical = 10.dp),
-                        decorationBox = { innerTextField ->
-                            if (questionText.isEmpty()) {
-                                Text(
-                                    text = "اسأل المفتي الذكي...",
-                                    style = MaterialTheme.typography.bodyLarge.copy(
-                                        color = IosTextSecondary,
-                                        fontSize = 16.sp
-                                    )
-                                )
-                            }
-                            innerTextField()
-                        }
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                // Send button — same height as pill, on the RIGHT side
+                // Send button — first child = RIGHT side in RTL
                 val canSend = questionText.isNotBlank() && !isAiThinking
                 val scaleAnim = remember { androidx.compose.animation.core.Animatable(1f) }
 
@@ -1019,8 +989,37 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                         modifier = Modifier.size(20.dp)
                     )
                 }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Text input field — last child = LEFT side in RTL
+                Box(modifier = Modifier.weight(1f)) {
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = questionText,
+                        onValueChange = { questionText = it },
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(
+                            color = IosTextPrimary,
+                            fontSize = 16.sp
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 24.dp, max = 80.dp)
+                            .padding(vertical = 10.dp),
+                        decorationBox = { innerTextField ->
+                            if (questionText.isEmpty()) {
+                                Text(
+                                    text = "اسأل المفتي الذكي...",
+                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                        color = IosTextSecondary,
+                                        fontSize = 16.sp
+                                    )
+                                )
+                            }
+                            innerTextField()
+                        }
+                    )
+                }
             }
-        }
 
         // ── Sources Bottom Sheet ──
         if (showSourcesSheet && sourcesForSheet.isNotEmpty()) {
