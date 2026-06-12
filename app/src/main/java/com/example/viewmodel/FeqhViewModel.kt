@@ -17,6 +17,10 @@ enum class AppTab {
     HOME, AI, SETTINGS
 }
 
+enum class ViewMode {
+    LIST, TREE
+}
+
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class FeqhViewModel(private val repository: FeqhRepository) : ViewModel() {
 
@@ -55,6 +59,18 @@ class FeqhViewModel(private val repository: FeqhRepository) : ViewModel() {
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
+
+    // Categories loading flag for skeleton
+    private val _isCategoriesLoading = MutableStateFlow(true)
+    val isCategoriesLoading: StateFlow<Boolean> = _isCategoriesLoading.asStateFlow()
+
+    // View mode: LIST (breadcrumb) or TREE (expandable)
+    private val _viewMode = MutableStateFlow(ViewMode.LIST)
+    val viewMode: StateFlow<ViewMode> = _viewMode.asStateFlow()
+
+    fun toggleViewMode() {
+        _viewMode.value = if (_viewMode.value == ViewMode.LIST) ViewMode.TREE else ViewMode.LIST
+    }
 
     private val aiLogicEngine = com.example.data.api.AILogicEngine(repository)
 
@@ -177,6 +193,11 @@ class FeqhViewModel(private val repository: FeqhRepository) : ViewModel() {
                 .collect { query ->
                     performSearch(query)
                 }
+        }
+        // Track initial root loading for skeleton
+        viewModelScope.launch {
+            rootCategories.drop(1).first() // skip initial empty, wait for actual data
+            _isCategoriesLoading.value = false
         }
     }
 

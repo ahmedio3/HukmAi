@@ -23,6 +23,8 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.ripple.LocalRippleTheme
+import androidx.compose.material.ripple.RippleTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.AnnotatedString
@@ -53,6 +56,7 @@ import com.example.data.model.TreeNode
 import com.example.ui.theme.*
 import com.example.viewmodel.AppTab
 import com.example.viewmodel.FeqhViewModel
+import com.example.viewmodel.ViewMode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -65,7 +69,15 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
     val isSearching by viewModel.isSearching.collectAsState()
 
     // Enforce full RTL layout direction matching requested Sharia design guidelines
-    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+    CompositionLocalProvider(
+        LocalLayoutDirection provides LayoutDirection.Rtl,
+        LocalRippleTheme provides object : RippleTheme {
+            @Composable
+            override fun defaultColor() = IosBackground
+            @Composable
+            override fun rippleBounded() = true
+        }
+    ) {
         
         // Handle android system back button stack navigation interceptors
         if (activeArticle != null) {
@@ -158,27 +170,19 @@ fun HomeTabScreen(viewModel: FeqhViewModel) {
     val isSearching by viewModel.isSearching.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
     val searchLoading by viewModel.searchLoading.collectAsState()
+    val isLoading by viewModel.isCategoriesLoading.collectAsState()
+    val viewMode by viewModel.viewMode.collectAsState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(IosBackground)
     ) {
-        // iOS Large Title
-        Text(
-            text = "الموسوعة الفقهية",
-            style = MaterialTheme.typography.displaySmall.copy(
-                fontWeight = FontWeight.Bold,
-                color = IosTextPrimary
-            ),
-            modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 12.dp)
-        )
-
-        // iOS Style Search Bar
+        // iOS Style Search Bar — moved up, no large header
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
                 .background(Color(0xFFE2E2E7), shape = RoundedCornerShape(10.dp))
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center
@@ -220,7 +224,29 @@ fun HomeTabScreen(viewModel: FeqhViewModel) {
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        // View mode toggle row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.Start,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (viewMode == ViewMode.TREE) "☰ قائمة" else "🌳 شجرة",
+                style = MaterialTheme.typography.bodySmall.copy(
+                    color = Color(0xFF007AFF),
+                    fontWeight = FontWeight.Medium
+                ),
+                modifier = Modifier
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { viewModel.toggleViewMode() }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
 
         // Contents layout loader toggle
         if (isSearching) {
@@ -241,7 +267,13 @@ fun HomeTabScreen(viewModel: FeqhViewModel) {
                 )
             }
         } else {
-            CategoryHierarchyView(viewModel = viewModel)
+            if (isLoading) {
+                SkeletonLoadingView()
+            } else if (viewMode == ViewMode.TREE) {
+                CategoryTreeView(viewModel = viewModel)
+            } else {
+                CategoryHierarchyView(viewModel = viewModel)
+            }
         }
     }
 }
@@ -264,17 +296,7 @@ fun CategoryHierarchyView(viewModel: FeqhViewModel) {
         Spacer(modifier = Modifier.height(12.dp))
 
         if (currentSubCategories.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "جاري التحميل...",
-                    style = MaterialTheme.typography.bodyLarge.copy(color = IosTextSecondary)
-                )
-            }
+            SkeletonLoadingView()
         } else {
             Card(
                 shape = RoundedCornerShape(12.dp),
@@ -1523,6 +1545,245 @@ fun SettingsTabScreen() {
                 },
                 containerColor = IosSurface,
                 shape = RoundedCornerShape(14.dp)
+            )
+        }
+    }
+}
+
+// ==========================================
+// SKELETON LOADING VIEW — shimmer placeholder for encyclopedia
+// ==========================================
+@Composable
+fun SkeletonLoadingView() {
+    val shimmerColors = listOf(
+        Color(0xFFE2E2E7),
+        Color(0xFFF2F2F7),
+        Color(0xFFE2E2E7)
+    )
+    val transition = rememberInfiniteTransition(label = "shimmer")
+    val translateAnim = transition.animateFloat(
+        initialValue = -300f,
+        targetValue = 1000f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "shimmerX"
+    )
+    val brush = Brush.linearGradient(
+        colors = shimmerColors,
+        start = Offset(translateAnim.value, 0f),
+        end = Offset(translateAnim.value + 200f, 0f)
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        repeat(8) { index ->
+            val widthFraction = when (index % 3) {
+                0 -> 0.92f
+                1 -> 0.75f
+                else -> 0.85f
+            }
+            val height = if (index % 4 == 0) 20.dp else 14.dp
+            Row(
+                modifier = Modifier.fillMaxWidth().height(height),
+                horizontalArrangement = Arrangement.Start
+            ) {
+                // Icon placeholder
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(brush)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                // Text placeholder
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(fraction = widthFraction)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(brush)
+                )
+            }
+        }
+    }
+}
+
+// ==========================================
+// CATEGORY TREE VIEW — expandable dropdown
+// ==========================================
+@Composable
+fun CategoryTreeView(viewModel: FeqhViewModel) {
+    val rootNodes by viewModel.rootCategories.collectAsState()
+    var expandedNodes by remember { mutableStateOf(setOf<Int>()) }
+
+    if (rootNodes.isEmpty()) {
+        SkeletonLoadingView()
+    } else {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp),
+            contentPadding = PaddingValues(vertical = 8.dp)
+        ) {
+            itemsIndexed(rootNodes) { index, node ->
+                TreeNodeItem(
+                    node = node,
+                    depth = 0,
+                    expandedNodes = expandedNodes,
+                    onToggle = { id ->
+                        expandedNodes = if (expandedNodes.contains(id)) {
+                            expandedNodes - id
+                        } else {
+                            expandedNodes + id
+                        }
+                    },
+                    onOpenArticle = { articleId -> viewModel.openArticle(articleId) }
+                )
+                if (index < rootNodes.lastIndex) {
+                    HorizontalDivider(
+                        color = IosSeparator,
+                        modifier = Modifier.padding(start = 40.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TreeNodeItem(
+    node: TreeNode,
+    depth: Int,
+    expandedNodes: Set<Int>,
+    onToggle: (Int) -> Unit,
+    onOpenArticle: (Int) -> Unit
+) {
+    val isExpanded = expandedNodes.contains(node.id)
+    val isLeaf = node.isLeaf == 1
+    val indentPadding = 16.dp * depth
+
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) {
+                    if (isLeaf) {
+                        node.articleId?.let(onOpenArticle)
+                    } else {
+                        onToggle(node.id)
+                    }
+                }
+                .padding(start = 16.dp + indentPadding, end = 16.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                // Expand/collapse or leaf icon
+                if (!isLeaf) {
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Filled.ExpandMore else Icons.Filled.KeyboardArrowLeft,
+                        contentDescription = if (isExpanded) "طيّ" else "فتح",
+                        tint = Color(0xFF007AFF),
+                        modifier = Modifier.size(20.dp)
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Outlined.Description,
+                        contentDescription = null,
+                        tint = IslamicDeepGreen,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = node.title,
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        color = IosTextPrimary,
+                        fontWeight = if (isLeaf) FontWeight.Normal else FontWeight.Medium
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        // Render children if expanded
+        if (!isLeaf && isExpanded) {
+            TreeNodeChildren(
+                parentId = node.id,
+                depth = depth + 1,
+                expandedNodes = expandedNodes,
+                onToggle = onToggle,
+                onOpenArticle = onOpenArticle
+            )
+        }
+    }
+}
+
+@Composable
+private fun TreeNodeChildren(
+    parentId: Int,
+    depth: Int,
+    expandedNodes: Set<Int>,
+    onToggle: (Int) -> Unit,
+    onOpenArticle: (Int) -> Unit
+) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val dao = remember { com.example.data.db.FeqhDatabase.getDatabase(ctx).feqhDao() }
+    var children by remember { mutableStateOf<List<TreeNode>>(emptyList()) }
+
+    LaunchedEffect(parentId) {
+        dao.getChildrenNodes(parentId).collect { list ->
+            children = list
+        }
+    }
+
+    if (!loaded) {
+        // Inline skeleton for children
+        repeat(2) { index ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(14.dp)
+                    .padding(start = 32.dp + 16.dp * depth, end = 16.dp, top = 8.dp),
+                horizontalArrangement = Arrangement.Start
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFFE2E2E7))
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(fraction = 0.6f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFFE2E2E7))
+                )
+            }
+        }
+    } else {
+        children.forEach { child ->
+            TreeNodeItem(
+                node = child,
+                depth = depth,
+                expandedNodes = expandedNodes,
+                onToggle = onToggle,
+                onOpenArticle = onOpenArticle
             )
         }
     }
