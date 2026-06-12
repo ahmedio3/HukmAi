@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -23,8 +24,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
-import androidx.compose.material.ripple.LocalRippleTheme
-import androidx.compose.material.ripple.RippleTheme
+import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -71,12 +71,7 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
     // Enforce full RTL layout direction matching requested Sharia design guidelines
     CompositionLocalProvider(
         LocalLayoutDirection provides LayoutDirection.Rtl,
-        LocalRippleTheme provides object : RippleTheme {
-            @Composable
-            override fun defaultColor() = IosBackground
-            @Composable
-            override fun rippleBounded() = true
-        }
+        LocalIndication provides rememberRipple(color = IosBackground)
     ) {
         
         // Handle android system back button stack navigation interceptors
@@ -1750,42 +1745,14 @@ private fun TreeNodeChildren(
         }
     }
 
-    if (!loaded) {
-        // Inline skeleton for children
-        repeat(2) { index ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(14.dp)
-                    .padding(start = 32.dp + 16.dp * depth, end = 16.dp, top = 8.dp),
-                horizontalArrangement = Arrangement.Start
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(18.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0xFFE2E2E7))
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(fraction = 0.6f)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0xFFE2E2E7))
-                )
-            }
-        }
-    } else {
-        children.forEach { child ->
-            TreeNodeItem(
-                node = child,
-                depth = depth,
-                expandedNodes = expandedNodes,
-                onToggle = onToggle,
-                onOpenArticle = onOpenArticle
-            )
-        }
+    children.forEach { child ->
+        TreeNodeItem(
+            node = child,
+            depth = depth,
+            expandedNodes = expandedNodes,
+            onToggle = onToggle,
+            onOpenArticle = onOpenArticle
+        )
     }
 }
 
