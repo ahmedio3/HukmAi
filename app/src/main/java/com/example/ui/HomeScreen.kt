@@ -843,6 +843,30 @@ fun ArticleViewerScreen(
 }
 
 // ==========================================
+// AI MODEL SELECTION
+// ==========================================
+sealed class AiModel {
+    object Gemini : AiModel()
+    object NvidiaDeepSeek : AiModel()
+    
+    val displayName: String
+        get() = when (this) {
+            is Gemini -> "Gemini"
+            is NvidiaDeepSeek -> "DeepSeek V4 (NVIDIA)"
+        }
+    
+    val icon: androidx.compose.ui.graphics.vector.ImageVector
+        get() = when (this) {
+            is Gemini -> Icons.Default.AutoAwesome
+            is NvidiaDeepSeek -> Icons.Default.Memory
+        }
+    
+    companion object {
+        fun values(): List<AiModel> = listOf(Gemini, NvidiaDeepSeek)
+    }
+}
+
+// ==========================================
 // TAB 2: AI ASSISTANT — CHAT INTERFACE
 // ==========================================
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -858,6 +882,13 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
     val listState = rememberLazyListState()
     val isAiThinking = aiProgress !is com.example.data.api.AiProgress.Idle
     val coroutineScope = rememberCoroutineScope()
+    
+    // AI Model Selection
+    var selectedModel by remember { mutableStateOf<AiModel>(AiModel.Gemini) }
+    var showModelSelector by remember { mutableStateOf(false) }
+    
+    // DeepSeek-style large input
+    var isInputFocused by remember { mutableStateOf(false) }
 
     // Auto-scroll to bottom when new messages arrive or progress changes
     LaunchedEffect(chatMessages.size, aiProgress) {
@@ -938,34 +969,155 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
             }
         }
 
-        // ── Input Pill — solid color, integrated send button ──
-        Surface(
+        // ── DeepSeek-Style Input with AI Model Selector ──
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            shape = RoundedCornerShape(28.dp),
-            color = Color(0xFFF2F2F7),
-            shadowElevation = 4.dp
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // AI Model Selector Pills
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 48.dp)
-                    .padding(start = 4.dp, end = 16.dp, top = 4.dp, bottom = 4.dp),
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Send button — first child = RIGHT side in RTL
-                val canSend = questionText.isNotBlank() && !isAiThinking
-                val scaleAnim = remember { androidx.compose.animation.core.Animatable(1f) }
-
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .graphicsLayer {
-                            scaleX = scaleAnim.value
-                            scaleY = scaleAnim.value
-                            alpha = if (canSend) 1f else 0.4f
+                listOf(AiModel.Gemini, AiModel.NvidiaDeepSeek).forEach { model ->
+                    val isSelected = model == selectedModel
+                    val index = listOf(AiModel.Gemini, AiModel.NvidiaDeepSeek).indexOf(model)
+                    if (index > 0) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clickable { selectedModel = model }
+                            .background(
+                                if (isSelected) Color(0xFF007AFF).copy(alpha = 0.1f) else Color.Transparent,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = model.icon,
+                                contentDescription = null,
+                                tint = if (isSelected) Color(0xFF007AFF) else IosTextSecondary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = model.displayName,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = if (isSelected) Color(0xFF007AFF) else IosTextSecondary,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            )
                         }
+                    }
+                }
+            }
+
+            // Input Container
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 56.dp)
+                    .background(
+                        Color.White.copy(alpha = 0.85f),
+                        shape = RoundedCornerShape(24.dp)
+                    )
+                    .border(
+                        width = 1.dp,
+                        color = if (isInputFocused) Color(0xFF007AFF).copy(alpha = 0.5f) else IosSeparator.copy(alpha = 0.3f),
+                        shape = RoundedCornerShape(24.dp)
+                    )
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Text Input
+                    Box(modifier = Modifier.weight(1f)) {
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = questionText,
+                            onValueChange = { questionText = it },
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                color = IosTextPrimary,
+                                fontSize = 16.sp
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 32.dp, max = 120.dp),
+                            maxLines = 5,
+                            decorationBox = { innerTextField ->
+                                if (questionText.isEmpty()) {
+                                    Text(
+                                        text = "اسأل المفتي الذكي...",
+                                        style = MaterialTheme.typography.bodyLarge.copy(
+                                            color = IosTextSecondary,
+                                            fontSize = 16.sp
+                                        )
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    // Send Button
+                    val canSend = questionText.isNotBlank() && !isAiThinking
+                    val scaleAnim = remember { androidx.compose.animation.core.Animatable(1f) }
+                    
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .graphicsLayer {
+                                scaleX = scaleAnim.value
+                                scaleY = scaleAnim.value
+                            }
+                            .background(
+                                if (canSend)
+                                    Brush.linearGradient(
+                                        colors = listOf(Color(0xFF007AFF), Color(0xFF0055CC))
+                                    )
+                                else
+                                    Brush.linearGradient(
+                                        colors = listOf(Color(0xFFE2E2E7), Color(0xFFE2E2E7))
+                                    ),
+                                shape = CircleShape
+                            )
+                            .clickable(
+                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                indication = null,
+                                enabled = canSend
+                            ) {
+                                coroutineScope.launch {
+                                    scaleAnim.snapTo(1f)
+                                    scaleAnim.animateTo(0.85f, androidx.compose.animation.core.tween(80))
+                                    scaleAnim.animateTo(1.05f, androidx.compose.animation.core.tween(100))
+                                    scaleAnim.animateTo(1f, androidx.compose.animation.core.tween(60))
+                                }
+                                focusManager.clearFocus()
+                                viewModel.submitAiQuestion(questionText)
+                                questionText = ""
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.ArrowUpward,
+                            contentDescription = "إرسال",
+                            tint = if (canSend) Color.White else IosTextSecondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+        }
                         .background(
                             if (canSend)
                                 Brush.linearGradient(
