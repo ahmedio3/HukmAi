@@ -1860,7 +1860,7 @@ private fun TreeNodeItem(
                 parentId = node.id,
                 depth = depth + 1,
                 parentIsLast = isLast,
-                ancestorLines = ancestorLines + if (!isLast) depth else emptySet(),
+                ancestorLines = if (!isLast) ancestorLines + depth else ancestorLines,
                 expandedNodes = expandedNodes,
                 onToggle = onToggle,
                 onOpenArticle = onOpenArticle
