@@ -28,6 +28,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -169,7 +170,93 @@ fun HomeTabScreen(viewModel: FeqhViewModel) {
             .fillMaxSize()
             .background(IosBackground)
     ) {
-        // iOS Style Search Bar — moved up, no large header
+        // Title row: "الموسوعة الفقهية" on the right, view mode button on the left
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "الموسوعة الفقهية",
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = IosTextPrimary
+                )
+            )
+
+            // View mode button
+            Box {
+                Row(
+                    modifier = Modifier
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { showViewModeMenu = true },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        tint = Color(0xFF007AFF),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "شكل العرض",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = Color(0xFF007AFF),
+                            fontWeight = FontWeight.Medium
+                        )
+                    )
+                }
+
+                // Redesigned dropdown as modern Card with vector icons
+                DropdownMenu(
+                    expanded = showViewModeMenu,
+                    onDismissRequest = { showViewModeMenu = false }
+                ) {
+                    Card(
+                        shape = RoundedCornerShape(12.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = IosSurface)
+                    ) {
+                        Column {
+                            DropdownMenuItem(
+                                text = { Text("شجري", fontWeight = if (viewMode == ViewMode.TREE) FontWeight.Bold else FontWeight.Normal) },
+                                onClick = {
+                                    viewModel.setViewMode(ViewMode.TREE)
+                                    showViewModeMenu = false
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Outlined.Folder,
+                                        contentDescription = null,
+                                        tint = if (viewMode == ViewMode.TREE) Color(0xFF007AFF) else IosTextSecondary
+                                    )
+                                }
+                            )
+                            HorizontalDivider(color = IosSeparator.copy(alpha = 0.5f))
+                            DropdownMenuItem(
+                                text = { Text("قائمة", fontWeight = if (viewMode == ViewMode.LIST) FontWeight.Bold else FontWeight.Normal) },
+                                onClick = {
+                                    viewModel.setViewMode(ViewMode.LIST)
+                                    showViewModeMenu = false
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.MenuBook,
+                                        contentDescription = null,
+                                        tint = if (viewMode == ViewMode.LIST) Color(0xFF007AFF) else IosTextSecondary
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -214,58 +301,6 @@ fun HomeTabScreen(viewModel: FeqhViewModel) {
                 }
             }
         }
-
-        // View mode button with dropdown
-        Box {
-            Row(
-                modifier = Modifier
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { showViewModeMenu = true },
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.ExpandMore,
-                    contentDescription = null,
-                    tint = Color(0xFF007AFF),
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = "شكل العرض",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = Color(0xFF007AFF),
-                        fontWeight = FontWeight.Medium
-                    )
-                )
-            }
-
-            DropdownMenu(
-                expanded = showViewModeMenu,
-                onDismissRequest = { showViewModeMenu = false }
-            ) {
-                DropdownMenuItem(
-                    text = { Text("🌳 شجري") },
-                    onClick = {
-                        viewModel.setViewMode(ViewMode.TREE)
-                        showViewModeMenu = false
-                    },
-                    leadingIcon = { Text("🌳", fontSize = 18.sp) }
-                )
-                DropdownMenuItem(
-                    text = { Text("☰ قائمة") },
-                    onClick = {
-                        viewModel.setViewMode(ViewMode.LIST)
-                        showViewModeMenu = false
-                    },
-                    leadingIcon = { Text("☰", fontSize = 18.sp) }
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(4.dp))
 
         // Contents layout loader toggle
         if (isSearching) {
@@ -1764,6 +1799,8 @@ private fun TreeNodeItem(
 ) {
     val isExpanded = expandedNodes.contains(node.id)
     val isLeaf = node.isLeaf == 1
+    val lineColor = Color(0xFFC8C8CC)
+    val indentWidth = 24.dp
 
     Column {
         Row(
@@ -1779,7 +1816,7 @@ private fun TreeNodeItem(
                         onToggle(node.id)
                     }
                 }
-                .padding(end = 4.dp, top = 12.dp, bottom = 12.dp),
+                .padding(end = 8.dp, top = 12.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -1787,42 +1824,64 @@ private fun TreeNodeItem(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                // Tree connector lines using simple Box composables
-                for (d in 0 until depth) {
-                    val hasLine = d in ancestorLines
-                    Box(
-                        modifier = Modifier
-                            .width(20.dp)
-                            .fillMaxHeight()
-                    ) {
-                        if (hasLine) {
-                            Box(
-                                modifier = Modifier
-                                    .width(1.dp)
-                                    .fillMaxHeight()
-                                    .background(Color(0xFFC8C8CC))
-                                    .align(Alignment.CenterStart)
-                            )
-                        }
-                    }
-                }
-                // Horizontal connector for current depth
+                // Continuous vertical guide line + connectors using drawBehind
                 if (depth > 0) {
                     Box(
                         modifier = Modifier
-                            .width(20.dp)
-                            .height(1.dp)
-                            .background(Color(0xFFC8C8CC))
+                            .width(indentWidth)
+                            .fillMaxHeight()
+                            .drawBehind {
+                                val strokeWidth = 1.5.dp.toPx()
+                                val halfIndent = indentWidth.toPx() / 2f
+                                val midY = size.height / 2f
+                                // Draw parent's vertical continuation line (if ancestor has more siblings)
+                                if (0 in ancestorLines) {
+                                    drawLine(
+                                        color = lineColor,
+                                        start = Offset(0f, 0f),
+                                        end = Offset(0f, size.height),
+                                        strokeWidth = strokeWidth
+                                    )
+                                }
+                                // Draw horizontal connector from parent line to this item
+                                drawLine(
+                                    color = lineColor,
+                                    start = Offset(0f, midY),
+                                    end = Offset(halfIndent, midY),
+                                    strokeWidth = strokeWidth
+                                )
+                                // Draw downward continuation line if not last child
+                                if (!isLast) {
+                                    drawLine(
+                                        color = lineColor,
+                                        start = Offset(halfIndent, midY),
+                                        end = Offset(halfIndent, size.height),
+                                        strokeWidth = strokeWidth
+                                    )
+                                }
+                            }
                     )
                 }
-                // Vertical continuation line (if not last child)
-                if (depth > 0 && !isLast) {
-                    Box(
-                        modifier = Modifier
-                            .width(1.dp)
-                            .fillMaxHeight()
-                            .background(Color(0xFFC8C8CC))
-                    )
+
+                // Additional ancestor vertical lines for deeper levels
+                for (d in 1 until depth) {
+                    if (d - 1 in ancestorLines) {
+                        Box(
+                            modifier = Modifier
+                                .width(indentWidth)
+                                .fillMaxHeight()
+                                .drawBehind {
+                                    drawLine(
+                                        color = lineColor,
+                                        start = Offset(0f, 0f),
+                                        end = Offset(0f, size.height),
+                                        strokeWidth = 1.5.dp.toPx()
+                                    )
+                                }
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.width(indentWidth))
+                    }
                 }
 
                 // Expand/collapse or leaf icon
