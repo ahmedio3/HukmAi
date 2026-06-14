@@ -1004,7 +1004,7 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
-                .padding(horizontal = 16.dp, bottom = 16.dp)
+                .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
         ) {
             Card(
                 shape = RoundedCornerShape(28.dp),
@@ -1764,10 +1764,6 @@ private fun TreeNodeItem(
 ) {
     val isExpanded = expandedNodes.contains(node.id)
     val isLeaf = node.isLeaf == 1
-    val lineColor = Color(0xFFC8C8CC)
-    val lineWidth = 1.dp
-    val indentStep = 20.dp
-    val connectorRadius = 6.dp // half of indentStep
 
     Column {
         Row(
@@ -1791,48 +1787,42 @@ private fun TreeNodeItem(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                // Tree connector lines area
-                Box(
-                    modifier = Modifier
-                        .width(depth * indentStep + 28.dp)
-                        .height(IntrinsicSize.Min)
-                ) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val indentPx = indentStep.toPx()
-                        // Draw ancestor vertical lines
-                        for (d in 0 until depth) {
-                            if (d in ancestorLines) {
-                                val x = indentPx * d + indentPx / 2
-                                drawLine(
-                                    color = lineColor,
-                                    start = Offset(x, 0f),
-                                    end = Offset(x, size.height),
-                                    strokeWidth = lineWidth.toPx()
-                                )
-                            }
-                        }
-                        // Draw current node connector
-                        if (depth > 0) {
-                            val x = indentPx * (depth - 1) + indentPx / 2
-                            val midY = size.height / 2
-                            // Horizontal line from ancestor line to content
-                            drawLine(
-                                color = lineColor,
-                                start = Offset(x, midY),
-                                end = Offset(x + indentPx, midY),
-                                strokeWidth = lineWidth.toPx()
+                // Tree connector lines using simple Box composables
+                for (d in 0 until depth) {
+                    val hasLine = d in ancestorLines
+                    Box(
+                        modifier = Modifier
+                            .width(20.dp)
+                            .fillMaxHeight()
+                    ) {
+                        if (hasLine) {
+                            Box(
+                                modifier = Modifier
+                                    .width(1.dp)
+                                    .fillMaxHeight()
+                                    .background(Color(0xFFC8C8CC))
+                                    .align(Alignment.CenterStart)
                             )
-                            // Vertical line going down from connector (if not last)
-                            if (!isLast) {
-                                drawLine(
-                                    color = lineColor,
-                                    start = Offset(x + indentPx, midY),
-                                    end = Offset(x + indentPx, size.height),
-                                    strokeWidth = lineWidth.toPx()
-                                )
-                            }
                         }
                     }
+                }
+                // Horizontal connector for current depth
+                if (depth > 0) {
+                    Box(
+                        modifier = Modifier
+                            .width(20.dp)
+                            .height(1.dp)
+                            .background(Color(0xFFC8C8CC))
+                    )
+                }
+                // Vertical continuation line (if not last child)
+                if (depth > 0 && !isLast) {
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .fillMaxHeight()
+                            .background(Color(0xFFC8C8CC))
+                    )
                 }
 
                 // Expand/collapse or leaf icon
