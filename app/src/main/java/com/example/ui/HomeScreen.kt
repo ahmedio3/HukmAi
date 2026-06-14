@@ -57,6 +57,27 @@ import com.example.viewmodel.FeqhViewModel
 import com.example.viewmodel.ViewMode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.material3.ripple.RippleTheme
+import androidx.compose.material3.ripple.LocalRippleTheme
+
+// ── Custom Ripple Theme that uses IosBackground instead of dark gray ──
+private object IosRippleTheme : RippleTheme {
+    @Composable
+    override fun defaultColor() = IosBackground
+
+    @Composable
+    override fun rippleAlpha(): RippleTheme.RippleAlpha = RippleTheme.defaultRippleAlpha(
+        contentColor = IosBackground,
+        lightTheme = true
+    )
+}
+
+@Composable
+private fun ProvideIosRipple(content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalRippleTheme provides IosRippleTheme) {
+        content()
+    }
+}
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -68,6 +89,7 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
 
     // Enforce full RTL layout direction matching requested Sharia design guidelines
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        ProvideIosRipple {
         
         // Handle android system back button stack navigation interceptors
         if (activeArticle != null) {
@@ -162,6 +184,7 @@ fun HomeTabScreen(viewModel: FeqhViewModel) {
     val searchLoading by viewModel.searchLoading.collectAsState()
     val isLoading by viewModel.isCategoriesLoading.collectAsState()
     val viewMode by viewModel.viewMode.collectAsState()
+    var showViewModeMenu by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -214,26 +237,54 @@ fun HomeTabScreen(viewModel: FeqhViewModel) {
             }
         }
 
-        // View mode toggle row
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.Start,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = if (viewMode == ViewMode.TREE) "☰ قائمة" else "🌳 شجرة",
-                style = MaterialTheme.typography.bodySmall.copy(
-                    color = Color(0xFF007AFF),
-                    fontWeight = FontWeight.Medium
-                ),
+        // View mode button with dropdown
+        Box {
+            Row(
                 modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
-                    ) { viewModel.toggleViewMode() }
-            )
+                    ) { showViewModeMenu = true },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ExpandMore,
+                    contentDescription = null,
+                    tint = Color(0xFF007AFF),
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "شكل العرض",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = Color(0xFF007AFF),
+                        fontWeight = FontWeight.Medium
+                    )
+                )
+            }
+
+            DropdownMenu(
+                expanded = showViewModeMenu,
+                onDismissRequest = { showViewModeMenu = false }
+            ) {
+                DropdownMenuItem(
+                    text = { Text("🌳 شجري") },
+                    onClick = {
+                        viewModel.setViewMode(ViewMode.TREE)
+                        showViewModeMenu = false
+                    },
+                    leadingIcon = { Text("🌳", fontSize = 18.sp) }
+                )
+                DropdownMenuItem(
+                    text = { Text("☰ قائمة") },
+                    onClick = {
+                        viewModel.setViewMode(ViewMode.LIST)
+                        showViewModeMenu = false
+                    },
+                    leadingIcon = { Text("☰", fontSize = 18.sp) }
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(4.dp))
@@ -289,12 +340,11 @@ fun CategoryHierarchyView(viewModel: FeqhViewModel) {
             SkeletonLoadingView()
         } else {
             Card(
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
                 colors = CardDefaults.cardColors(containerColor = IosSurface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
                     .weight(1f)
             ) {
                 LazyColumn(modifier = Modifier.fillMaxWidth()) {
@@ -898,15 +948,16 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
         }
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(IosBackground)
             .navigationBarsPadding()
             .imePadding()
     ) {
-        // Messages area — fills all space above input
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Messages area — fills all space above input
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (chatMessages.isEmpty() && !isAiThinking) {
                 Column(
                     modifier = Modifier.align(Alignment.Center).fillMaxWidth(),
@@ -968,108 +1019,28 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                 }
             }
         }
+    }
 
-        // ── DeepSeek-Style Input with AI Model Selector ──
-        Column(
+        // ── DeepSeek-Style Floating Input ──
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 16.dp, bottom = 16.dp)
         ) {
-            // AI Model Selector Pills
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                listOf(AiModel.Gemini, AiModel.NvidiaDeepSeek).forEach { model ->
-                    val isSelected = model == selectedModel
-                    val index = listOf(AiModel.Gemini, AiModel.NvidiaDeepSeek).indexOf(model)
-                    if (index > 0) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
-                    Box(
-                        modifier = Modifier
-                            .clickable { selectedModel = model }
-                            .background(
-                                if (isSelected) Color(0xFF007AFF).copy(alpha = 0.1f) else Color.Transparent,
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = model.icon,
-                                contentDescription = null,
-                                tint = if (isSelected) Color(0xFF007AFF) else IosTextSecondary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = model.displayName,
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    color = if (isSelected) Color(0xFF007AFF) else IosTextSecondary,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Input Container
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 56.dp)
-                    .background(
-                        Color.White.copy(alpha = 0.85f),
-                        shape = RoundedCornerShape(24.dp)
-                    )
-                    .border(
-                        width = 1.dp,
-                        color = if (isInputFocused) Color(0xFF007AFF).copy(alpha = 0.5f) else IosSeparator.copy(alpha = 0.3f),
-                        shape = RoundedCornerShape(24.dp)
-                    )
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            Card(
+                shape = RoundedCornerShape(28.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                colors = CardDefaults.cardColors(containerColor = IosSurface)
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 52.dp)
+                        .padding(start = 4.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Text Input
-                    Box(modifier = Modifier.weight(1f)) {
-                        androidx.compose.foundation.text.BasicTextField(
-                            value = questionText,
-                            onValueChange = { questionText = it },
-                            textStyle = MaterialTheme.typography.bodyLarge.copy(
-                                color = IosTextPrimary,
-                                fontSize = 16.sp
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 32.dp, max = 120.dp),
-                            maxLines = 5,
-                            decorationBox = { innerTextField ->
-                                if (questionText.isEmpty()) {
-                                    Text(
-                                        text = "اسأل المفتي الذكي...",
-                                        style = MaterialTheme.typography.bodyLarge.copy(
-                                            color = IosTextSecondary,
-                                            fontSize = 16.sp
-                                        )
-                                    )
-                                }
-                                innerTextField()
-                            }
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    // Send Button
+                    // Send Button — first child in RTL = right side
                     val canSend = questionText.isNotBlank() && !isAiThinking
                     val scaleAnim = remember { androidx.compose.animation.core.Animatable(1f) }
                     
@@ -1114,6 +1085,82 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                             tint = if (canSend) Color.White else IosTextSecondary,
                             modifier = Modifier.size(20.dp)
                         )
+                    }
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    // Text Input — middle, fills remaining space
+                    Box(modifier = Modifier.weight(1f)) {
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = questionText,
+                            onValueChange = { questionText = it },
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                color = IosTextPrimary,
+                                fontSize = 16.sp
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 32.dp, max = 100.dp),
+                            maxLines = 5,
+                            decorationBox = { innerTextField ->
+                                if (questionText.isEmpty()) {
+                                    Text(
+                                        text = "اسأل المفتي الذكي...",
+                                        style = MaterialTheme.typography.bodyLarge.copy(
+                                            color = IosTextSecondary,
+                                            fontSize = 16.sp
+                                        )
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    // Model Selector Button — last child in RTL = left side
+                    Box {
+                        IconButton(
+                            onClick = { showModelSelector = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = selectedModel.icon,
+                                contentDescription = "اختيار النموذج",
+                                tint = Color(0xFF007AFF),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showModelSelector,
+                            onDismissRequest = { showModelSelector = false }
+                        ) {
+                            AiModel.values().forEach { model ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = model.icon,
+                                                contentDescription = null,
+                                                tint = if (model == selectedModel) Color(0xFF007AFF) else IosTextSecondary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = model.displayName,
+                                                fontWeight = if (model == selectedModel) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        selectedModel = model
+                                        showModelSelector = false
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1710,6 +1757,8 @@ fun CategoryTreeView(viewModel: FeqhViewModel) {
                 TreeNodeItem(
                     node = node,
                     depth = 0,
+                    isLast = index == rootNodes.lastIndex,
+                    ancestorLines = emptySet(),
                     expandedNodes = expandedNodes,
                     onToggle = { id ->
                         expandedNodes = if (expandedNodes.contains(id)) {
@@ -1720,12 +1769,6 @@ fun CategoryTreeView(viewModel: FeqhViewModel) {
                     },
                     onOpenArticle = { articleId -> viewModel.openArticle(articleId) }
                 )
-                if (index < rootNodes.lastIndex) {
-                    HorizontalDivider(
-                        color = IosSeparator,
-                        modifier = Modifier.padding(start = 40.dp)
-                    )
-                }
             }
         }
     }
@@ -1735,13 +1778,18 @@ fun CategoryTreeView(viewModel: FeqhViewModel) {
 private fun TreeNodeItem(
     node: TreeNode,
     depth: Int,
+    isLast: Boolean,
+    ancestorLines: Set<Int>,
     expandedNodes: Set<Int>,
     onToggle: (Int) -> Unit,
     onOpenArticle: (Int) -> Unit
 ) {
     val isExpanded = expandedNodes.contains(node.id)
     val isLeaf = node.isLeaf == 1
-    val indentPadding = 16.dp * depth
+    val lineColor = Color(0xFFC8C8CC)
+    val lineWidth = 1.dp
+    val indentStep = 20.dp
+    val connectorRadius = 6.dp // half of indentStep
 
     Column {
         Row(
@@ -1757,7 +1805,7 @@ private fun TreeNodeItem(
                         onToggle(node.id)
                     }
                 }
-                .padding(start = 16.dp + indentPadding, end = 16.dp, top = 12.dp, bottom = 12.dp),
+                .padding(end = 4.dp, top = 12.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -1765,10 +1813,54 @@ private fun TreeNodeItem(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
+                // Tree connector lines area
+                Box(
+                    modifier = Modifier
+                        .width(depth * indentStep + 28.dp)
+                        .height(IntrinsicSize.Min)
+                ) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val indentPx = indentStep.toPx()
+                        // Draw ancestor vertical lines
+                        for (d in 0 until depth) {
+                            if (d in ancestorLines) {
+                                val x = indentPx * d + indentPx / 2
+                                drawLine(
+                                    color = lineColor,
+                                    start = Offset(x, 0f),
+                                    end = Offset(x, size.height),
+                                    strokeWidth = lineWidth.toPx()
+                                )
+                            }
+                        }
+                        // Draw current node connector
+                        if (depth > 0) {
+                            val x = indentPx * (depth - 1) + indentPx / 2
+                            val midY = size.height / 2
+                            // Horizontal line from ancestor line to content
+                            drawLine(
+                                color = lineColor,
+                                start = Offset(x, midY),
+                                end = Offset(x + indentPx, midY),
+                                strokeWidth = lineWidth.toPx()
+                            )
+                            // Vertical line going down from connector (if not last)
+                            if (!isLast) {
+                                drawLine(
+                                    color = lineColor,
+                                    start = Offset(x + indentPx, midY),
+                                    end = Offset(x + indentPx, size.height),
+                                    strokeWidth = lineWidth.toPx()
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // Expand/collapse or leaf icon
                 if (!isLeaf) {
                     Icon(
-                        imageVector = if (isExpanded) Icons.Filled.ExpandMore else Icons.Filled.KeyboardArrowLeft,
+                        imageVector = if (isExpanded) Icons.Filled.ExpandMore else Icons.AutoMirrored.Filled.ArrowForward,
                         contentDescription = if (isExpanded) "طيّ" else "فتح",
                         tint = Color(0xFF007AFF),
                         modifier = Modifier.size(20.dp)
@@ -1799,6 +1891,8 @@ private fun TreeNodeItem(
             TreeNodeChildren(
                 parentId = node.id,
                 depth = depth + 1,
+                parentIsLast = isLast,
+                ancestorLines = ancestorLines + if (!isLast) depth else emptySet(),
                 expandedNodes = expandedNodes,
                 onToggle = onToggle,
                 onOpenArticle = onOpenArticle
@@ -1811,6 +1905,8 @@ private fun TreeNodeItem(
 private fun TreeNodeChildren(
     parentId: Int,
     depth: Int,
+    parentIsLast: Boolean,
+    ancestorLines: Set<Int>,
     expandedNodes: Set<Int>,
     onToggle: (Int) -> Unit,
     onOpenArticle: (Int) -> Unit
@@ -1825,10 +1921,12 @@ private fun TreeNodeChildren(
         }
     }
 
-    children.forEach { child ->
+    children.forEachIndexed { index, child ->
         TreeNodeItem(
             node = child,
             depth = depth,
+            isLast = index == children.lastIndex,
+            ancestorLines = ancestorLines,
             expandedNodes = expandedNodes,
             onToggle = onToggle,
             onOpenArticle = onOpenArticle

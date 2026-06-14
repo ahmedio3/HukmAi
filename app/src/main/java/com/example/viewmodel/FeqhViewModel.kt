@@ -72,6 +72,10 @@ class FeqhViewModel(private val repository: FeqhRepository) : ViewModel() {
         _viewMode.value = if (_viewMode.value == ViewMode.LIST) ViewMode.TREE else ViewMode.LIST
     }
 
+    fun setViewMode(mode: ViewMode) {
+        _viewMode.value = mode
+    }
+
     private val aiLogicEngine = com.example.data.api.AILogicEngine(repository)
 
     // ---- Chat State ----
