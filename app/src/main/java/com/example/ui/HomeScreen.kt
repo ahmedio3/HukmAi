@@ -57,27 +57,6 @@ import com.example.viewmodel.FeqhViewModel
 import com.example.viewmodel.ViewMode
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import androidx.compose.material3.ripple.RippleTheme
-import androidx.compose.material3.ripple.LocalRippleTheme
-
-// ── Custom Ripple Theme that uses IosBackground instead of dark gray ──
-private object IosRippleTheme : RippleTheme {
-    @Composable
-    override fun defaultColor() = IosBackground
-
-    @Composable
-    override fun rippleAlpha(): RippleTheme.RippleAlpha = RippleTheme.defaultRippleAlpha(
-        contentColor = IosBackground,
-        lightTheme = true
-    )
-}
-
-@Composable
-private fun ProvideIosRipple(content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalRippleTheme provides IosRippleTheme) {
-        content()
-    }
-}
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -89,7 +68,6 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
 
     // Enforce full RTL layout direction matching requested Sharia design guidelines
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-        ProvideIosRipple {
         
         // Handle android system back button stack navigation interceptors
         if (activeArticle != null) {
