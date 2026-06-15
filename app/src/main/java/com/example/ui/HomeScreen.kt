@@ -66,6 +66,7 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
     val activeArticle by viewModel.activeArticle.collectAsState()
     val categoryStack by viewModel.categoryStack.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
+    val viewMode by viewModel.viewMode.collectAsState()
 
     // Enforce full RTL layout direction matching requested Sharia design guidelines
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
@@ -103,10 +104,11 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
 
         Scaffold(
             bottomBar = {
-                if (!androidx.compose.foundation.layout.WindowInsets.isImeVisible) {
+                if (!androidx.compose.foundation.layout.WindowInsets.isImeVisible && activeArticle == null) {
                     ElegantBottomBar(
                         currentTab = currentTab,
-                        onTabSelected = { viewModel.setTab(it) }
+                        onTabSelected = { viewModel.setTab(it) },
+                        showShadow = currentTab == AppTab.HOME && viewMode == ViewMode.LIST
                     )
                 }
             },
@@ -120,7 +122,7 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
             ) {
                 // Main visual tabs routing
                 AnimatedContent(
-                    targetState = currentTab,
+                    targetState = if (activeArticle != null) null else currentTab,
                     transitionSpec = {
                         fadeIn() togetherWith fadeOut()
                     },
@@ -130,23 +132,24 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
                         AppTab.HOME -> HomeTabScreen(viewModel = viewModel)
                         AppTab.AI -> AiTabScreen(viewModel = viewModel)
                         AppTab.SETTINGS -> SettingsTabScreen()
+                        null -> { /* article covers everything */ }
                     }
                 }
+            }
+        }
 
-                // Foreground overlay layer for Article Viewer Screen
-                AnimatedVisibility(
-                    visible = activeArticle != null,
-                    enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                    exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    activeArticle?.let { article ->
-                        ArticleViewerScreen(
-                            article = article,
-                            onClose = { viewModel.closeArticle() }
-                        )
-                    }
-                }
+        // Foreground overlay layer for Article Viewer Screen - FULLSCREEN, above scaffold
+        AnimatedVisibility(
+            visible = activeArticle != null,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            activeArticle?.let { article ->
+                ArticleViewerScreen(
+                    article = article,
+                    onClose = { viewModel.closeArticle() }
+                )
             }
         }
     }
@@ -224,21 +227,6 @@ fun HomeTabScreen(viewModel: FeqhViewModel) {
                     ) {
                         Column {
                             DropdownMenuItem(
-                                text = { Text("شجري", fontWeight = if (viewMode == ViewMode.TREE) FontWeight.Bold else FontWeight.Normal) },
-                                onClick = {
-                                    viewModel.setViewMode(ViewMode.TREE)
-                                    showViewModeMenu = false
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.Outlined.Folder,
-                                        contentDescription = null,
-                                        tint = if (viewMode == ViewMode.TREE) Color(0xFF007AFF) else IosTextSecondary
-                                    )
-                                }
-                            )
-                            HorizontalDivider(color = IosSeparator.copy(alpha = 0.5f))
-                            DropdownMenuItem(
                                 text = { Text("قائمة", fontWeight = if (viewMode == ViewMode.LIST) FontWeight.Bold else FontWeight.Normal) },
                                 onClick = {
                                     viewModel.setViewMode(ViewMode.LIST)
@@ -246,9 +234,24 @@ fun HomeTabScreen(viewModel: FeqhViewModel) {
                                 },
                                 leadingIcon = {
                                     Icon(
-                                        Icons.Default.MenuBook,
+                                        Icons.Outlined.Folder,
                                         contentDescription = null,
                                         tint = if (viewMode == ViewMode.LIST) Color(0xFF007AFF) else IosTextSecondary
+                                    )
+                                }
+                            )
+                            HorizontalDivider(color = IosSeparator.copy(alpha = 0.5f))
+                            DropdownMenuItem(
+                                text = { Text("شجري", fontWeight = if (viewMode == ViewMode.TREE) FontWeight.Bold else FontWeight.Normal) },
+                                onClick = {
+                                    viewModel.setViewMode(ViewMode.TREE)
+                                    showViewModeMenu = false
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Outlined.AccountTree,
+                                        contentDescription = null,
+                                        tint = if (viewMode == ViewMode.TREE) Color(0xFF007AFF) else IosTextSecondary
                                     )
                                 }
                             )
@@ -360,14 +363,24 @@ fun CategoryHierarchyView(viewModel: FeqhViewModel) {
                     .fillMaxWidth()
                     .weight(1f)
             ) {
-                LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                    itemsIndexed(currentSubCategories) { index, node ->
-                        CategoryItemCard(
-                            node = node,
-                            onClick = { viewModel.pushCategory(node) }
-                        )
-                        if (index < currentSubCategories.lastIndex) {
-                            HorizontalDivider(color = IosSeparator, modifier = Modifier.padding(start = 56.dp))
+                // Animated content for category transitions
+                androidx.compose.animation.AnimatedContent(
+                    targetState = currentSubCategories.map { it.id }, // key by IDs
+                    transitionSpec = {
+                        fadeIn(animationSpec = tween(250)) togetherWith
+                        fadeOut(animationSpec = tween(200))
+                    },
+                    label = "categoryTransition"
+                ) { _ ->
+                    LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                        itemsIndexed(currentSubCategories) { index, node ->
+                            CategoryItemCard(
+                                node = node,
+                                onClick = { viewModel.pushCategory(node) }
+                            )
+                            if (index < currentSubCategories.lastIndex) {
+                                HorizontalDivider(color = IosSeparator, modifier = Modifier.padding(start = 56.dp))
+                            }
                         }
                     }
                 }
@@ -387,6 +400,12 @@ fun BreadcrumbIndicator(
             .padding(horizontal = 24.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Determine visible items: if stack > 3, show "..." + last 2
+        val maxVisible = 3
+        val showEllipsis = stack.size > maxVisible
+        val visibleItems = if (showEllipsis) stack.takeLast(2) else stack
+        val ellipsisCount = stack.size - visibleItems.size
+
         // Home tab anchor
         Text(
             text = "الرئيسية",
@@ -398,25 +417,45 @@ fun BreadcrumbIndicator(
             modifier = Modifier.clickable { onNavigate(-1) }
         )
 
-        stack.forEachIndexed { index, node ->
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack, // logical RTL back arrow acts as forward chevron
-                contentDescription = "Divider",
-                tint = IosTextSecondary,
-                modifier = Modifier
-                    .size(16.dp)
-                    .padding(horizontal = 2.dp)
+        if (showEllipsis) {
+            Text(
+                text = " / ",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    color = IosTextSecondary,
+                    fontSize = 14.sp
+                )
+            )
+            Text(
+                text = "...",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    color = IosTextSecondary,
+                    fontSize = 14.sp
+                ),
+                modifier = Modifier.clickable { onNavigate(-1) }
+            )
+        }
+
+        // Map visible items back to original indices for correct navigation
+        val startIndex = if (showEllipsis) stack.size - visibleItems.size else 0
+        visibleItems.forEachIndexed { localIndex, node ->
+            val globalIndex = startIndex + localIndex
+            Text(
+                text = " / ",
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    color = IosTextSecondary,
+                    fontSize = 14.sp
+                )
             )
             Text(
                 text = node.title,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    fontWeight = if (index == stack.lastIndex) FontWeight.Bold else FontWeight.Medium,
-                    color = if (index == stack.lastIndex) IosTextPrimary else Color(0xFF007AFF),
+                    fontWeight = if (globalIndex == stack.lastIndex) FontWeight.Bold else FontWeight.Medium,
+                    color = if (globalIndex == stack.lastIndex) IosTextPrimary else Color(0xFF007AFF),
                     fontSize = 15.sp
                 ),
-                modifier = Modifier.clickable { onNavigate(index) }.weight(1f, fill=false)
+                modifier = Modifier.clickable { onNavigate(globalIndex) }.weight(1f, fill = false)
             )
         }
     }
@@ -651,11 +690,18 @@ fun highlightText(
 sealed class HtmlElement {
     data class Title1(val text: String) : HtmlElement()
     data class Title2(val text: String) : HtmlElement()
-    data class Aaya(val text: String) : HtmlElement()
-    data class Hadith(val text: String) : HtmlElement()
-    data class Paragraph(val text: String) : HtmlElement()
-    data class Tip(val text: String) : HtmlElement()
+    data class RichParagraph(val parts: List<RichPart>) : HtmlElement()
+    data class Footnote(val num: Int, val text: String) : HtmlElement()
 }
+
+/** Inline part within a paragraph: normal text, Quran, or Hadith */
+sealed class RichPart {
+    data class Text(val text: String) : RichPart()
+    data class Aaya(val text: String) : RichPart()
+    data class Hadith(val text: String) : RichPart()
+}
+
+/** Stack of footnotes collected during parsing, used for numbered markers */
 
 /**
  * Parser for the feqhia database HTML format.
@@ -663,66 +709,93 @@ sealed class HtmlElement {
  * The HTML uses <br/> as line separators and <span class="xxx"> tags for
  * semantic elements like title-1, title-2, aaya (Quran), hadith, and tip.
  * Lines without special spans are treated as regular paragraphs.
+ * Tip elements are collected as numbered footnotes.
  */
 fun parseHtmlToElements(html: String): List<HtmlElement> {
     if (html.isEmpty()) return emptyList()
+    val footnoteCollector = mutableListOf<String>()
 
     val list = mutableListOf<HtmlElement>()
-
-    // Split the HTML into logical lines by <br/> tags
     val lines = html.split(Regex("<br\\s*/?>"))
 
-    // Regex to match opening <span class="known-class">...</span> — non-greedy
+    // Regex to match known inline spans
     val spanRegex = Regex(
         """<span class="(title-1|title-2|aaya|hadith|tip)">(.*?)</span>""",
         RegexOption.DOT_MATCHES_ALL
     )
-    // Regex for other spans we may want to skip or treat as text (sora, etc)
     val otherSpanRegex = Regex("""<span[^>]*>.*?</span>""", RegexOption.DOT_MATCHES_ALL)
 
     for (line in lines) {
         val trimmed = line.trim()
         if (trimmed.isEmpty()) continue
 
-        // Check each line for known span tags
-        var lastEnd = 0
-        var hasKnownSpan = false
-
-        for (match in spanRegex.findAll(trimmed)) {
-            val before = trimmed.substring(lastEnd, match.range.first).trim()
-            // Emit text before this span as a paragraph (if non-empty)
-            if (before.isNotEmpty()) {
-                val cleanBefore = before
-                    .replace(otherSpanRegex, "")       // remove any other spans
-                    .replace(Regex("<[^>]*>"), "")     // strip remaining tags
-                    .trim()
-                if (cleanBefore.isNotEmpty()) {
-                    list.add(HtmlElement.Paragraph(cleanBefore))
-                }
-            }
-
-            val className = match.groupValues[1]
-            val rawContent = match.groupValues[2].trim()
-            // Clean inner content: strip any nested tags (like <a>, <i>)
+        // Check if this line has a title (those remain as separate blocks)
+        val titleMatch = spanRegex.find(trimmed)
+        if (titleMatch != null) {
+            val className = titleMatch.groupValues[1]
+            val rawContent = titleMatch.groupValues[2].trim()
             val content = rawContent
                 .replace(Regex("<[^>]*>"), "")
                 .trim()
-
-            when (className) {
-                "title-1" -> {
-                    list.add(HtmlElement.Title1(content))
-                    // Add a small spacer after title-1
-                }
-                "title-2" -> list.add(HtmlElement.Title2(content))
-                "aaya"     -> list.add(HtmlElement.Aaya(content))
-                "hadith"   -> list.add(HtmlElement.Hadith(content))
-                "tip"      -> list.add(HtmlElement.Tip(content))
+            
+            if (className == "title-1" && content.isNotEmpty()) {
+                list.add(HtmlElement.Title1(content))
+                continue
             }
-            hasKnownSpan = true
-            lastEnd = match.range.last + 1
+            if (className == "title-2" && content.isNotEmpty()) {
+                list.add(HtmlElement.Title2(content))
+                continue
+            }
         }
 
-        // Any remaining text after the last known span
+        // Collect tip/footnotes
+        for (match in spanRegex.findAll(trimmed)) {
+            if (match.groupValues[1] == "tip") {
+                val tipText = match.groupValues[2]
+                    .replace(Regex("<[^>]*>"), "")
+                    .trim()
+                if (tipText.isNotEmpty()) {
+                    footnoteCollector.add(tipText)
+                }
+            }
+        }
+
+        // Build rich paragraph with inline aaya/hadith
+        val parts = mutableListOf<RichPart>()
+        var lastEnd = 0
+        var hasInlineContent = false
+
+        for (match in spanRegex.findAll(trimmed)) {
+            val className = match.groupValues[1]
+            if (className == "aaya" || className == "hadith") {
+                hasInlineContent = true
+                // Text before this span
+                val before = trimmed.substring(lastEnd, match.range.first).trim()
+                if (before.isNotEmpty()) {
+                    val cleanBefore = before
+                        .replace(otherSpanRegex, "")
+                        .replace(Regex("<[^>]*>"), "")
+                        .trim()
+                    if (cleanBefore.isNotEmpty()) {
+                        parts.add(RichPart.Text(cleanBefore))
+                    }
+                }
+                // The inline aaya/hadith
+                val content = match.groupValues[2]
+                    .replace(Regex("<[^>]*>"), "")
+                    .trim()
+                if (content.isNotEmpty()) {
+                    if (className == "aaya") {
+                        parts.add(RichPart.Aaya("﴿ $content ﴾"))
+                    } else {
+                        parts.add(RichPart.Hadith("« $content »"))
+                    }
+                }
+                lastEnd = match.range.last + 1
+            }
+        }
+
+        // Remaining text after last inline span
         val after = trimmed.substring(lastEnd).trim()
         if (after.isNotEmpty()) {
             val cleanAfter = after
@@ -730,23 +803,30 @@ fun parseHtmlToElements(html: String): List<HtmlElement> {
                 .replace(Regex("<[^>]*>"), "")
                 .trim()
             if (cleanAfter.isNotEmpty()) {
-                list.add(HtmlElement.Paragraph(cleanAfter))
+                parts.add(RichPart.Text(cleanAfter))
             }
         }
 
-        // If no known spans at all, treat the whole line as a plain paragraph
-        if (!hasKnownSpan) {
+        if (hasInlineContent && parts.isNotEmpty()) {
+            list.add(HtmlElement.RichParagraph(parts))
+        } else if (!hasInlineContent) {
+            // Plain paragraph (no special inline content, titles already handled)
             val cleanLine = trimmed
                 .replace(Regex("<[^>]*>"), "")
                 .trim()
-            if (cleanLine.isNotEmpty()) {
-                list.add(HtmlElement.Paragraph(cleanLine))
+            if (cleanLine.isNotEmpty() && !trimmed.contains("title-1") && !trimmed.contains("title-2")) {
+                list.add(HtmlElement.RichParagraph(listOf(RichPart.Text(cleanLine))))
             }
         }
     }
 
+    // Add collected footnotes at the end
+    footnoteCollector.forEachIndexed { index, text ->
+        list.add(HtmlElement.Footnote(index + 1, text))
+    }
+
     if (list.isEmpty()) {
-        list.add(HtmlElement.Paragraph(html.replace(Regex("<[^>]*>"), "")))
+        list.add(HtmlElement.RichParagraph(listOf(RichPart.Text(html.replace(Regex("<[^>]*>"), "")))))
     }
 
     return list
@@ -758,150 +838,219 @@ fun ArticleViewerScreen(
     onClose: () -> Unit
 ) {
     val items = remember(article.html) { parseHtmlToElements(article.html ?: "") }
+    var selectedFootnote by remember { mutableStateOf<Pair<Int, String>?>(null) }
 
-    Surface(
-        color = IosBackground,
-        modifier = Modifier.fillMaxSize()
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
-            
-            // Clean Top Bar
+            // Clean Top Bar — minimal, under status bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(IosSurface)
-                    .padding(vertical = 12.dp, horizontal = 16.dp)
-                    .statusBarsPadding(),
+                    .statusBarsPadding()
+                    .padding(vertical = 10.dp, horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
                     tint = Color(0xFF007AFF),
-                    modifier = Modifier.size(24.dp).clickable { onClose() }.padding(4.dp)
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clickable { onClose() }
+                        .padding(4.dp)
                 )
-                Spacer(modifier = Modifier.width(16.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = article.title,
-                        style = MaterialTheme.typography.bodyLarge.copy(
-                            color = IosTextPrimary,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = article.title,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        color = IosTextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
             }
 
             HorizontalDivider(color = IosSeparator, thickness = 0.5.dp)
 
-            // Article Content Flow body
+            // Article Content Flow body — more horizontal padding for readability
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 24.dp, vertical = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
                 horizontalAlignment = Alignment.Start
             ) {
                 items(items.size) { index ->
                     when (val el = items[index]) {
                         is HtmlElement.Title1 -> {
-                            Column(modifier = Modifier.fillMaxWidth()) {
-                                Text(
-                                    text = el.text,
-                                    style = MaterialTheme.typography.displaySmall.copy(
-                                        color = IosTextPrimary,
-                                        fontWeight = FontWeight.Bold,
-                                    ),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                            }
-                        }
-                        is HtmlElement.Title2 -> {
                             Text(
                                 text = el.text,
                                 style = MaterialTheme.typography.titleLarge.copy(
                                     color = IosTextPrimary,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            )
-                        }
-                        is HtmlElement.Aaya -> {
-                            // Centered beautiful Quranic text block
-                            Box(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 20.sp
+                                ),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "﴿ ${el.text} ﴾",
-                                    style = MaterialTheme.typography.bodyLarge.copy(
-                                        color = IslamicDeepGreen,
-                                        fontSize = 20.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        textAlign = TextAlign.Center,
-                                        lineHeight = 32.sp
-                                    ),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-                        }
-                        is HtmlElement.Hadith -> {
-                            Text(
-                                text = "« ${el.text} »",
-                                style = MaterialTheme.typography.bodyLarge.copy(
-                                    color = Color(0xFF007AFF),
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    fontStyle = FontStyle.Normal,
-                                    lineHeight = 28.sp
-                                )
+                                    .padding(vertical = 4.dp)
                             )
                         }
-                        is HtmlElement.Paragraph -> {
+                        is HtmlElement.Title2 -> {
                             Text(
                                 text = el.text,
-                                style = MaterialTheme.typography.bodyLarge.copy(
+                                style = MaterialTheme.typography.titleMedium.copy(
                                     color = IosTextPrimary,
-                                    fontSize = 16.sp,
-                                    lineHeight = 28.sp,
-                                    textAlign = TextAlign.Justify
-                                )
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 17.sp
+                                ),
+                                modifier = Modifier.padding(vertical = 2.dp)
                             )
                         }
-                        is HtmlElement.Tip -> {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(Color(0xFFE5F0FF), shape = RoundedCornerShape(12.dp))
-                                    .padding(16.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.Top) {
-                                    Icon(
-                                        imageVector = Icons.Default.Lightbulb,
-                                        contentDescription = null,
-                                        tint = Color(0xFF007AFF),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Text(
-                                        text = el.text,
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            color = IosTextPrimary,
-                                            fontSize = 14.sp,
-                                            lineHeight = 22.sp
-                                        )
-                                    )
-                                }
-                            }
+                        is HtmlElement.RichParagraph -> {
+                            RichParagraphView(parts = el.parts)
+                        }
+                        is HtmlElement.Footnote -> {
+                            FootnoteView(
+                                num = el.num,
+                                text = el.text,
+                                onClick = { selectedFootnote = Pair(el.num, el.text) }
+                            )
                         }
                     }
                 }
             }
         }
+
+        // Footnote bottom sheet
+        if (selectedFootnote != null) {
+            ModalBottomSheet(
+                onDismissRequest = { selectedFootnote = null },
+                containerColor = IosSurface,
+                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp)
+                        .padding(bottom = 32.dp)
+                ) {
+                    Text(
+                        text = "هامش (${selectedFootnote!!.first})",
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = IosTextPrimary
+                        ),
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                    Text(
+                        text = selectedFootnote!!.second,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = IosTextPrimary,
+                            fontSize = 14.sp,
+                            lineHeight = 22.sp,
+                            textAlign = TextAlign.Justify
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RichParagraphView(parts: List<RichPart>) {
+    val annotatedText = remember(parts) {
+        buildAnnotatedString {
+            parts.forEach { part ->
+                when (part) {
+                    is RichPart.Text -> {
+                        pushStyle(SpanStyle(
+                            color = IosTextPrimary
+                        ))
+                        append(part.text)
+                        pop()
+                    }
+                    is RichPart.Aaya -> {
+                        pushStyle(SpanStyle(
+                            color = IslamicDeepGreen,
+                            fontWeight = FontWeight.Medium
+                        ))
+                        append(part.text)
+                        pop()
+                    }
+                    is RichPart.Hadith -> {
+                        pushStyle(SpanStyle(
+                            color = Color(0xFF007AFF),
+                            fontWeight = FontWeight.Medium
+                        ))
+                        append(part.text)
+                        pop()
+                    }
+                }
+            }
+        }
+    }
+
+    Text(
+        text = annotatedText,
+        style = MaterialTheme.typography.bodyMedium.copy(
+            fontSize = 15.sp,
+            lineHeight = 24.sp,
+            textAlign = TextAlign.Justify
+        ),
+        modifier = Modifier.fillMaxWidth()
+    )
+}
+
+@Composable
+private fun FootnoteView(
+    num: Int,
+    text: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onClick() }
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .background(
+                    Color(0xFFE5E5EA),
+                    shape = CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "$num",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    color = IosTextSecondary,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            )
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        val truncated = if (text.length > 40) text.take(40) + "..." else text
+        Text(
+            text = truncated,
+            style = MaterialTheme.typography.bodySmall.copy(
+                color = IosTextSecondary,
+                fontSize = 13.sp
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -1801,8 +1950,12 @@ private fun TreeNodeItem(
     val isLeaf = node.isLeaf == 1
     val lineColor = Color(0xFFC8C8CC)
     val indentWidth = 24.dp
+    val strokeWidth = 1.5.dp
+    val halfIndentDp = 12.dp
 
-    Column {
+    Column(
+        modifier = Modifier.animateContentSize(animationSpec = tween(200))
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1824,64 +1977,68 @@ private fun TreeNodeItem(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                // Continuous vertical guide line + connectors using drawBehind
+                // ── Tree connector lines ──
                 if (depth > 0) {
+                    // Single Box for ALL indent levels: ancestors (rightmost) + connector (leftmost)
                     Box(
                         modifier = Modifier
-                            .width(indentWidth)
+                            .width(depth * indentWidth)
                             .fillMaxHeight()
                             .drawBehind {
-                                val strokeWidth = 1.5.dp.toPx()
-                                val halfIndent = indentWidth.toPx() / 2f
+                                val indentPx = indentWidth.toPx()
+                                val midPx = indentPx / 2f
                                 val midY = size.height / 2f
-                                // Draw parent's vertical continuation line (if ancestor has more siblings)
-                                if (0 in ancestorLines) {
+                                val sw = strokeWidth.toPx()
+
+                                // Draw ancestor vertical lines (levels 0 to depth-2)
+                                // These go from RIGHT to LEFT in the indent area
+                                // Level 0 (root) = rightmost column, Level depth-2 = column just left of connector
+                                for (a in 0 until depth - 1) {
+                                    if (a in ancestorLines) {
+                                        // Column index from left: a, so position from RIGHT edge: (depth-1-a) * indentPx
+                                        // In LTR canvas (x increases right), the center of this column is:
+                                        val colCenter = (depth - 1 - a) * indentPx + midPx
+                                        drawLine(
+                                            color = lineColor,
+                                            start = Offset(colCenter, 0f),
+                                            end = Offset(colCenter, size.height),
+                                            strokeWidth = sw
+                                        )
+                                    }
+                                }
+
+                                // Connector level (immediate parent = depth-1, leftmost column)
+                                val parentColCenter = midPx // center of leftmost column
+
+                                // Draw vertical line for parent level if it continues
+                                if (depth - 1 in ancestorLines) {
                                     drawLine(
                                         color = lineColor,
-                                        start = Offset(0f, 0f),
-                                        end = Offset(0f, size.height),
-                                        strokeWidth = strokeWidth
+                                        start = Offset(parentColCenter, 0f),
+                                        end = Offset(parentColCenter, size.height),
+                                        strokeWidth = sw
                                     )
                                 }
-                                // Draw horizontal connector from parent line to this item
+
+                                // Horizontal connector from parent center line to LEFT edge (toward icon)
                                 drawLine(
                                     color = lineColor,
-                                    start = Offset(0f, midY),
-                                    end = Offset(halfIndent, midY),
-                                    strokeWidth = strokeWidth
+                                    start = Offset(parentColCenter, midY),
+                                    end = Offset(0f, midY),
+                                    strokeWidth = sw
                                 )
-                                // Draw downward continuation line if not last child
+
+                                // Vertical continuation at parent center going down (if not last child)
                                 if (!isLast) {
                                     drawLine(
                                         color = lineColor,
-                                        start = Offset(halfIndent, midY),
-                                        end = Offset(halfIndent, size.height),
-                                        strokeWidth = strokeWidth
+                                        start = Offset(parentColCenter, midY),
+                                        end = Offset(parentColCenter, size.height),
+                                        strokeWidth = sw
                                     )
                                 }
                             }
                     )
-                }
-
-                // Additional ancestor vertical lines for deeper levels
-                for (d in 1 until depth) {
-                    if (d - 1 in ancestorLines) {
-                        Box(
-                            modifier = Modifier
-                                .width(indentWidth)
-                                .fillMaxHeight()
-                                .drawBehind {
-                                    drawLine(
-                                        color = lineColor,
-                                        start = Offset(0f, 0f),
-                                        end = Offset(0f, size.height),
-                                        strokeWidth = 1.5.dp.toPx()
-                                    )
-                                }
-                        )
-                    } else {
-                        Spacer(modifier = Modifier.width(indentWidth))
-                    }
                 }
 
                 // Expand/collapse or leaf icon
@@ -1913,13 +2070,21 @@ private fun TreeNodeItem(
             }
         }
 
+        // Horizontal separator line at end of expanded section
+        if (!isLeaf && isExpanded) {
+            HorizontalDivider(
+                color = IosSeparator,
+                modifier = Modifier.padding(start = 56.dp, end = 16.dp)
+            )
+        }
+
         // Render children if expanded
         if (!isLeaf && isExpanded) {
             TreeNodeChildren(
                 parentId = node.id,
                 depth = depth + 1,
                 parentIsLast = isLast,
-                ancestorLines = if (!isLast) ancestorLines + depth else ancestorLines,
+                ancestorLines = ancestorLines + if (!isLast || isExpanded) setOf(depth) else emptySet(),
                 expandedNodes = expandedNodes,
                 onToggle = onToggle,
                 onOpenArticle = onOpenArticle
@@ -2063,10 +2228,28 @@ private fun extractSummarySection(text: String): Pair<String?, String> {
 @Composable
 fun ElegantBottomBar(
     currentTab: AppTab,
-    onTabSelected: (AppTab) -> Unit
+    onTabSelected: (AppTab) -> Unit,
+    showShadow: Boolean = false
 ) {
     Column {
-        HorizontalDivider(color = IosSeparator, thickness = 0.5.dp)
+        if (showShadow) {
+            // Subtle shadow gradient above bottom nav
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color(0x0A000000) // very subtle shadow
+                            )
+                        )
+                    )
+            )
+        } else {
+            HorizontalDivider(color = IosSeparator, thickness = 0.5.dp)
+        }
         NavigationBar(
             containerColor = IosSurface,
             tonalElevation = 0.dp,

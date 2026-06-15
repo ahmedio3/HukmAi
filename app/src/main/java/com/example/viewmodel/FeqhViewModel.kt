@@ -1,6 +1,8 @@
 package com.example.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.content.Context
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.data.model.Article
@@ -22,7 +24,9 @@ enum class ViewMode {
 }
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
-class FeqhViewModel(private val repository: FeqhRepository) : ViewModel() {
+class FeqhViewModel(application: Application, private val repository: FeqhRepository) : AndroidViewModel(application) {
+
+    private val prefs = application.getSharedPreferences("hukm_prefs", Context.MODE_PRIVATE)
 
     // Current Bottom Navigation Tab State
     private val _currentTab = MutableStateFlow(AppTab.HOME)
@@ -65,15 +69,20 @@ class FeqhViewModel(private val repository: FeqhRepository) : ViewModel() {
     val isCategoriesLoading: StateFlow<Boolean> = _isCategoriesLoading.asStateFlow()
 
     // View mode: LIST (breadcrumb) or TREE (expandable)
-    private val _viewMode = MutableStateFlow(ViewMode.LIST)
+    private val _viewMode = MutableStateFlow(
+        ViewMode.values()[prefs.getInt("view_mode", ViewMode.LIST.ordinal)]
+    )
     val viewMode: StateFlow<ViewMode> = _viewMode.asStateFlow()
 
     fun toggleViewMode() {
-        _viewMode.value = if (_viewMode.value == ViewMode.LIST) ViewMode.TREE else ViewMode.LIST
+        val newMode = if (_viewMode.value == ViewMode.LIST) ViewMode.TREE else ViewMode.LIST
+        _viewMode.value = newMode
+        prefs.edit().putInt("view_mode", newMode.ordinal).apply()
     }
 
     fun setViewMode(mode: ViewMode) {
         _viewMode.value = mode
+        prefs.edit().putInt("view_mode", mode.ordinal).apply()
     }
 
     private val aiLogicEngine = com.example.data.api.AILogicEngine(repository)
@@ -280,10 +289,10 @@ class FeqhViewModel(private val repository: FeqhRepository) : ViewModel() {
     }
 
     @Suppress("UNCHECKED_CAST")
-    class Factory(private val repository: FeqhRepository) : ViewModelProvider.Factory {
+    class Factory(private val application: Application, private val repository: FeqhRepository) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(FeqhViewModel::class.java)) {
-                return FeqhViewModel(repository) as T
+                return FeqhViewModel(application, repository) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class")
         }

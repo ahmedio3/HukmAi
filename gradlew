@@ -51,7 +51,7 @@ warn () {
 
 die () {
     echo
-    echo "$*
+    echo "$*"
     echo
     exit 1
 } >&2

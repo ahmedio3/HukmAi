@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
     private val repository by lazy { FeqhRepository(database.feqhDao(), chatDatabase.chatDao()) }
     
     private val viewModel: FeqhViewModel by viewModels {
-        FeqhViewModel.Factory(repository)
+        FeqhViewModel.Factory(application, repository)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
