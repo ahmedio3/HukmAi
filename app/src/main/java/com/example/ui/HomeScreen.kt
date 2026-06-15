@@ -1196,6 +1196,7 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                 }
             }
         }
+    }
 
         // ── Scroll-to-Bottom Floating Button ──
         AnimatedVisibility(
