@@ -120,9 +120,9 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                // Main visual tabs routing
+                // Main visual tabs routing — keep tabs alive during article overlay
                 AnimatedContent(
-                    targetState = if (activeArticle != null) null else currentTab,
+                    targetState = currentTab,
                     transitionSpec = {
                         fadeIn() togetherWith fadeOut()
                     },
@@ -132,7 +132,6 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
                         AppTab.HOME -> HomeTabScreen(viewModel = viewModel)
                         AppTab.AI -> AiTabScreen(viewModel = viewModel)
                         AppTab.SETTINGS -> SettingsTabScreen()
-                        null -> { /* article covers everything */ }
                     }
                 }
             }
@@ -709,16 +708,16 @@ sealed class RichPart {
  * The HTML uses <br/> as line separators and <span class="xxx"> tags for
  * semantic elements like title-1, title-2, aaya (Quran), hadith, and tip.
  * Lines without special spans are treated as regular paragraphs.
- * Tip elements are collected as numbered footnotes.
+ * Tip elements are collected as numbered footnotes positioned right after
+ * their referencing paragraph.
  */
 fun parseHtmlToElements(html: String): List<HtmlElement> {
     if (html.isEmpty()) return emptyList()
-    val footnoteCollector = mutableListOf<String>()
+    var footnoteCounter = 0
 
     val list = mutableListOf<HtmlElement>()
     val lines = html.split(Regex("<br\\s*/?>"))
 
-    // Regex to match known inline spans
     val spanRegex = Regex(
         """<span class="(title-1|title-2|aaya|hadith|tip)">(.*?)</span>""",
         RegexOption.DOT_MATCHES_ALL
@@ -729,38 +728,33 @@ fun parseHtmlToElements(html: String): List<HtmlElement> {
         val trimmed = line.trim()
         if (trimmed.isEmpty()) continue
 
-        // Check if this line has a title (those remain as separate blocks)
+        // Check if this line has a title
         val titleMatch = spanRegex.find(trimmed)
         if (titleMatch != null) {
             val className = titleMatch.groupValues[1]
             val rawContent = titleMatch.groupValues[2].trim()
-            val content = rawContent
-                .replace(Regex("<[^>]*>"), "")
-                .trim()
-            
+            val content = rawContent.replace(Regex("<[^>]*>"), "").trim()
             if (className == "title-1" && content.isNotEmpty()) {
-                list.add(HtmlElement.Title1(content))
-                continue
+                list.add(HtmlElement.Title1(content)); continue
             }
             if (className == "title-2" && content.isNotEmpty()) {
-                list.add(HtmlElement.Title2(content))
-                continue
+                list.add(HtmlElement.Title2(content)); continue
             }
         }
 
-        // Collect tip/footnotes
+        // First pass: collect tip footnotes from this line
+        val lineFootnotes = mutableListOf<String>()
         for (match in spanRegex.findAll(trimmed)) {
             if (match.groupValues[1] == "tip") {
-                val tipText = match.groupValues[2]
-                    .replace(Regex("<[^>]*>"), "")
-                    .trim()
+                val tipText = match.groupValues[2].replace(Regex("<[^>]*>"), "").trim()
                 if (tipText.isNotEmpty()) {
-                    footnoteCollector.add(tipText)
+                    footnoteCounter++
+                    lineFootnotes.add(tipText)
                 }
             }
         }
 
-        // Build rich paragraph with inline aaya/hadith
+        // Build rich paragraph EXCLUDING tip text
         val parts = mutableListOf<RichPart>()
         var lastEnd = 0
         var hasInlineContent = false
@@ -769,60 +763,41 @@ fun parseHtmlToElements(html: String): List<HtmlElement> {
             val className = match.groupValues[1]
             if (className == "aaya" || className == "hadith") {
                 hasInlineContent = true
-                // Text before this span
                 val before = trimmed.substring(lastEnd, match.range.first).trim()
                 if (before.isNotEmpty()) {
-                    val cleanBefore = before
-                        .replace(otherSpanRegex, "")
-                        .replace(Regex("<[^>]*>"), "")
-                        .trim()
-                    if (cleanBefore.isNotEmpty()) {
-                        parts.add(RichPart.Text(cleanBefore))
-                    }
+                    val cleanBefore = before.replace(otherSpanRegex, "").replace(Regex("<[^>]*>"), "").trim()
+                    if (cleanBefore.isNotEmpty()) parts.add(RichPart.Text(cleanBefore))
                 }
-                // The inline aaya/hadith
-                val content = match.groupValues[2]
-                    .replace(Regex("<[^>]*>"), "")
-                    .trim()
+                val content = match.groupValues[2].replace(Regex("<[^>]*>"), "").trim()
                 if (content.isNotEmpty()) {
-                    if (className == "aaya") {
-                        parts.add(RichPart.Aaya("﴿ $content ﴾"))
-                    } else {
-                        parts.add(RichPart.Hadith("« $content »"))
-                    }
+                    parts.add(if (className == "aaya") RichPart.Aaya("﴿ $content ﴾") else RichPart.Hadith("« $content »"))
+                }
+                lastEnd = match.range.last + 1
+            } else if (className == "tip") {
+                val before = trimmed.substring(lastEnd, match.range.first).trim()
+                if (before.isNotEmpty()) {
+                    val cleanBefore = before.replace(otherSpanRegex, "").replace(Regex("<[^>]*>"), "").trim()
+                    if (cleanBefore.isNotEmpty()) parts.add(RichPart.Text(cleanBefore))
                 }
                 lastEnd = match.range.last + 1
             }
         }
 
-        // Remaining text after last inline span
         val after = trimmed.substring(lastEnd).trim()
         if (after.isNotEmpty()) {
-            val cleanAfter = after
-                .replace(otherSpanRegex, "")
-                .replace(Regex("<[^>]*>"), "")
-                .trim()
-            if (cleanAfter.isNotEmpty()) {
-                parts.add(RichPart.Text(cleanAfter))
-            }
+            val cleanAfter = after.replace(otherSpanRegex, "").replace(Regex("<[^>]*>"), "").trim()
+            if (cleanAfter.isNotEmpty()) parts.add(RichPart.Text(cleanAfter))
         }
 
-        if (hasInlineContent && parts.isNotEmpty()) {
+        if (parts.isNotEmpty()) {
             list.add(HtmlElement.RichParagraph(parts))
-        } else if (!hasInlineContent) {
-            // Plain paragraph (no special inline content, titles already handled)
-            val cleanLine = trimmed
-                .replace(Regex("<[^>]*>"), "")
-                .trim()
-            if (cleanLine.isNotEmpty() && !trimmed.contains("title-1") && !trimmed.contains("title-2")) {
-                list.add(HtmlElement.RichParagraph(listOf(RichPart.Text(cleanLine))))
+        }
+        // Add footnotes right after the paragraph (even if paragraph is empty — standalone tips)
+        if (lineFootnotes.isNotEmpty()) {
+            lineFootnotes.forEachIndexed { fnIdx, text ->
+                list.add(HtmlElement.Footnote(footnoteCounter - lineFootnotes.size + fnIdx + 1, text))
             }
         }
-    }
-
-    // Add collected footnotes at the end
-    footnoteCollector.forEachIndexed { index, text ->
-        list.add(HtmlElement.Footnote(index + 1, text))
     }
 
     if (list.isEmpty()) {
@@ -1103,11 +1078,17 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
     // DeepSeek-style large input
     var isInputFocused by remember { mutableStateOf(false) }
 
-    // Auto-scroll to bottom when new messages arrive or progress changes
+    // Auto-scroll to bottom on new messages — only if user was already near bottom
     LaunchedEffect(chatMessages.size, aiProgress) {
         if (chatMessages.isNotEmpty()) {
-            delay(100)
-            listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
+            val info = listState.layoutInfo
+            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val total = info.totalItemsCount
+            val nearBottom = total == 0 || lastVisible >= total - 2
+            if (nearBottom) {
+                delay(100)
+                listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
+            }
         }
     }
 
@@ -1980,7 +1961,7 @@ private fun TreeNodeItem(
             ) {
                 // ── Tree connector lines ──
                 if (depth > 0) {
-                    // Single Box for ALL indent levels: ancestors (rightmost) + connector (leftmost)
+                    // Single Box for ALL indent levels: only vertical lines, no horizontal connectors
                     Box(
                         modifier = Modifier
                             .width(indentWidth * depth)
@@ -1992,12 +1973,8 @@ private fun TreeNodeItem(
                                 val sw = strokeWidth.toPx()
 
                                 // Draw ancestor vertical lines (levels 0 to depth-2)
-                                // These go from RIGHT to LEFT in the indent area
-                                // Level 0 (root) = rightmost column, Level depth-2 = column just left of connector
                                 for (a in 0 until depth - 1) {
                                     if (a in ancestorLines) {
-                                        // Column index from left: a, so position from RIGHT edge: (depth-1-a) * indentPx
-                                        // In LTR canvas (x increases right), the center of this column is:
                                         val colCenter = (depth - 1 - a) * indentPx + midPx
                                         drawLine(
                                             color = lineColor,
@@ -2008,11 +1985,10 @@ private fun TreeNodeItem(
                                     }
                                 }
 
-                                // Connector level (immediate parent = depth-1, leftmost column)
-                                val parentColCenter = midPx // center of leftmost column
-
-                                // Draw vertical line for parent level if it continues
+                                // Parent level (depth-1, leftmost column) — vertical line only
+                                val parentColCenter = midPx
                                 if (depth - 1 in ancestorLines) {
+                                    // Full vertical line through this row
                                     drawLine(
                                         color = lineColor,
                                         start = Offset(parentColCenter, 0f),
@@ -2021,16 +1997,8 @@ private fun TreeNodeItem(
                                     )
                                 }
 
-                                // Horizontal connector from parent center line to LEFT edge (toward icon)
-                                drawLine(
-                                    color = lineColor,
-                                    start = Offset(parentColCenter, midY),
-                                    end = Offset(0f, midY),
-                                    strokeWidth = sw
-                                )
-
-                                // Vertical continuation at parent center going down (if not last child)
-                                if (!isLast) {
+                                // Vertical continuation at parent center going down (if not last child or has children)
+                                if (!isLast || (!isLeaf && isExpanded)) {
                                     drawLine(
                                         color = lineColor,
                                         start = Offset(parentColCenter, midY),
