@@ -832,6 +832,7 @@ fun parseHtmlToElements(html: String): List<HtmlElement> {
     return list
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArticleViewerScreen(
     article: Article,
@@ -1982,7 +1983,7 @@ private fun TreeNodeItem(
                     // Single Box for ALL indent levels: ancestors (rightmost) + connector (leftmost)
                     Box(
                         modifier = Modifier
-                            .width(depth * indentWidth)
+                            .width(indentWidth * depth)
                             .fillMaxHeight()
                             .drawBehind {
                                 val indentPx = indentWidth.toPx()
