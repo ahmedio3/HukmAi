@@ -98,6 +98,17 @@ class FeqhViewModel(application: Application, private val repository: FeqhReposi
     // Store last user question for retry
     private var _lastUserQuestion = ""
 
+    // Scroll position retention across tab switches
+    private val _aiScrollIndex = MutableStateFlow(0)
+    val aiScrollIndex: StateFlow<Int> = _aiScrollIndex.asStateFlow()
+    private val _aiScrollOffset = MutableStateFlow(0)
+    val aiScrollOffset: StateFlow<Int> = _aiScrollOffset.asStateFlow()
+
+    fun saveAiScrollPosition(index: Int, offset: Int) {
+        _aiScrollIndex.value = index
+        _aiScrollOffset.value = offset
+    }
+
     fun clearAiState() {
         _aiProgress.value = com.example.data.api.AiProgress.Idle
     }

@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -57,6 +58,7 @@ import com.example.viewmodel.AppTab
 import com.example.viewmodel.FeqhViewModel
 import com.example.viewmodel.ViewMode
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.snapshotFlow
 import kotlinx.coroutines.launch
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
@@ -816,7 +818,11 @@ fun ArticleViewerScreen(
     val items = remember(article.html) { parseHtmlToElements(article.html ?: "") }
     var selectedFootnote by remember { mutableStateOf<Pair<Int, String>?>(null) }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(IosSurface)
+    ) {
         Column(modifier = Modifier.fillMaxSize()) {
             // Clean Top Bar — minimal, under status bar
             Row(
@@ -1067,9 +1073,36 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
     var sourcesForSheet by remember { mutableStateOf<List<com.example.data.model.Article>>(emptyList()) }
     var sourceLoadError by remember { mutableStateOf(false) }
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
-    val listState = rememberLazyListState()
+    val savedIndex = viewModel.aiScrollIndex.collectAsState().value
+    val savedOffset = viewModel.aiScrollOffset.collectAsState().value
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = savedIndex,
+        initialFirstVisibleItemScrollOffset = savedOffset
+    )
     val isAiThinking = aiProgress !is com.example.data.api.AiProgress.Idle
     val coroutineScope = rememberCoroutineScope()
+
+    // Save scroll position to ViewModel for tab-switch persistence
+    LaunchedEffect(Unit) {
+        snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }.collect { (index, offset) ->
+            viewModel.saveAiScrollPosition(index, offset)
+        }
+    }
+
+    // Track whether user is at the bottom for scroll-to-bottom button
+    val isNearBottom = remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+            val total = info.totalItemsCount
+            total == 0 || lastVisible >= total - 2
+        }.collect { near ->
+            isNearBottom.value = near
+        }
+    }
     
     // AI Model Selection
     var selectedModel by remember { mutableStateOf<AiModel>(AiModel.Gemini) }
@@ -1126,7 +1159,7 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 12.dp),
-                    contentPadding = PaddingValues(top = 12.dp, bottom = 8.dp),
+                    contentPadding = PaddingValues(top = 12.dp, bottom = 96.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     itemsIndexed(chatMessages) { index, msg ->
@@ -1163,7 +1196,39 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                 }
             }
         }
-    }
+
+        // ── Scroll-to-Bottom Floating Button ──
+        AnimatedVisibility(
+            visible = !isNearBottom.value && chatMessages.isNotEmpty(),
+            enter = fadeIn() + scaleIn(),
+            exit = fadeOut() + scaleOut(),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 24.dp, bottom = 80.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .shadow(6.dp, CircleShape)
+                    .background(IosSurface, CircleShape)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        coroutineScope.launch {
+                            listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.ArrowDownward,
+                    contentDescription = "التمرير لأسفل",
+                    tint = Color(0xFF007AFF),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
 
         // ── DeepSeek-Style Floating Input ──
         Box(
@@ -1930,10 +1995,10 @@ private fun TreeNodeItem(
 ) {
     val isExpanded = expandedNodes.contains(node.id)
     val isLeaf = node.isLeaf == 1
-    val lineColor = Color(0xFFC8C8CC)
-    val indentWidth = 24.dp
-    val strokeWidth = 1.5.dp
-    val halfIndentDp = 12.dp
+    val lineColor = Color(0xFFB0B0B6)
+    val indentWidth = 28.dp
+    val strokeWidth = 2.dp
+    val halfIndentDp = 14.dp
 
     Column(
         modifier = Modifier.animateContentSize(animationSpec = tween(200))
@@ -2053,7 +2118,7 @@ private fun TreeNodeItem(
                 parentId = node.id,
                 depth = depth + 1,
                 parentIsLast = isLast,
-                ancestorLines = ancestorLines + if (!isLast || isExpanded) setOf(depth) else emptySet(),
+                ancestorLines = ancestorLines + if (!isLast) setOf(depth) else emptySet(),
                 expandedNodes = expandedNodes,
                 onToggle = onToggle,
                 onOpenArticle = onOpenArticle
