@@ -58,7 +58,7 @@ import com.example.viewmodel.AppTab
 import com.example.viewmodel.FeqhViewModel
 import com.example.viewmodel.ViewMode
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.snapshotFlow
+import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.launch
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
