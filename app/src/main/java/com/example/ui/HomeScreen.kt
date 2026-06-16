@@ -1886,7 +1886,7 @@ fun AiChatMessage(
                                 .firstOrNull()?.let {
                                     onViewSources()
                                 }
-                        }
+                        })
                     }
                 }
             }
