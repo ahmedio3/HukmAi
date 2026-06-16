@@ -1,4 +1,4 @@
-name: Build Debug APK
+name: Build Release APK
 
 on:
   push:
@@ -26,15 +26,15 @@ jobs:
       - name: Verify database exists
         run: ls -lh app/src/main/assets/databases/feqhia.db
       
-      - name: Build with Gradle
+      - name: Build release with Gradle
         env:
           API_KEY_ROUTER_MAIN: ${{ secrets.API_KEY_ROUTER_MAIN }}
           API_KEY_ROUTER_FALLBACK: ${{ secrets.API_KEY_ROUTER_FALLBACK }}
           API_KEY_ANSWER: ${{ secrets.API_KEY_ANSWER }}
-        run: gradle assembleDebug --stacktrace --no-daemon
+        run: gradle assembleRelease --stacktrace --no-daemon
       
       - uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/*.apk
+          name: app-release
+          path: app/build/outputs/apk/release/*.apk
           retention-days: 7

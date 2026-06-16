@@ -6,7 +6,7 @@ import androidx.compose.runtime.Composable
 
 // Custom Light Beige Schema
 private val CustomBeigeColorScheme = lightColorScheme(
-    primary = AntiqueWalnut,
+    primary = IosBlue,
     onPrimary = BookPageSurface,
     secondary = IslamicDeepGreen,
     onSecondary = BookPageSurface,
@@ -17,7 +17,9 @@ private val CustomBeigeColorScheme = lightColorScheme(
     onSurface = ElegantBronzeCharcoal,
     surfaceVariant = SoftWarmTan,
     onSurfaceVariant = ElegantBronzeCharcoal,
-    outline = BorderColor
+    outline = BorderColor,
+    outlineVariant = IosSeparator,
+    scrim = IosShadowStrong
 )
 
 @Composable

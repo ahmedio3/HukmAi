@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.buildAnnotatedString
@@ -61,6 +62,18 @@ import kotlinx.coroutines.delay
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.launch
 
+private val DockVisibilitySpring = spring<Float>(dampingRatio = 0.86f, stiffness = 520f)
+private val DockOffsetSpring = spring<IntOffset>(dampingRatio = 0.9f, stiffness = 540f)
+private val ScreenPushSpring = spring<IntOffset>(dampingRatio = 0.92f, stiffness = 640f)
+private val MorphSpring = spring<Float>(dampingRatio = 0.84f, stiffness = 520f)
+
+private data class DockDestination(
+    val tab: AppTab,
+    val selectedIcon: ImageVector,
+    val unselectedIcon: ImageVector,
+    val contentDescription: String
+)
+
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun MainAppScreen(viewModel: FeqhViewModel) {
@@ -68,7 +81,16 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
     val activeArticle by viewModel.activeArticle.collectAsState()
     val categoryStack by viewModel.categoryStack.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
-    val viewMode by viewModel.viewMode.collectAsState()
+    var lastPrimaryTab by rememberSaveable { mutableStateOf(AppTab.HOME) }
+    val isAiVisible = currentTab == AppTab.AI
+    val baseTab = if (isAiVisible) lastPrimaryTab else currentTab
+    val isImeVisible = WindowInsets.isImeVisible
+
+    LaunchedEffect(currentTab) {
+        if (currentTab != AppTab.AI) {
+            lastPrimaryTab = currentTab
+        }
+    }
 
     // Enforce full RTL layout direction matching requested Sharia design guidelines
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
@@ -80,6 +102,8 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
             BackHandler { viewModel.popCategory() }
         } else if (isSearching) {
             BackHandler { viewModel.clearSearch() }
+        } else if (isAiVisible) {
+            BackHandler { viewModel.setTab(lastPrimaryTab) }
         }
 
         val view = androidx.compose.ui.platform.LocalView.current
@@ -89,7 +113,7 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
                 val window = (context as? android.app.Activity)?.window
                 if (window != null) {
                     val color = if (activeArticle != null || currentTab == AppTab.AI) {
-                        IosSurface
+                        IosBackground
                     } else {
                         IosBackground
                     }
@@ -104,53 +128,103 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
             }
         }
 
-        Scaffold(
-            bottomBar = {
-                if (!androidx.compose.foundation.layout.WindowInsets.isImeVisible && activeArticle == null) {
-                    ElegantBottomBar(
-                        currentTab = currentTab,
-                        onTabSelected = { viewModel.setTab(it) },
-                        showShadow = currentTab == AppTab.HOME && viewMode == ViewMode.LIST
-                    )
-                }
-            },
-            containerColor = BookParchmentBg,
-            modifier = Modifier.fillMaxSize()
-        ) { innerPadding ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-            ) {
-                // Main visual tabs routing — keep tabs alive during article overlay
-                AnimatedContent(
-                    targetState = currentTab,
-                    transitionSpec = {
-                        fadeIn() togetherWith fadeOut()
-                    },
-                    label = "tab_transitions"
-                ) { targetTab ->
-                    when (targetTab) {
-                        AppTab.HOME -> HomeTabScreen(viewModel = viewModel)
-                        AppTab.AI -> AiTabScreen(viewModel = viewModel)
-                        AppTab.SETTINGS -> SettingsTabScreen()
-                    }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(BookParchmentBg)
+        ) {
+            AnimatedContent(
+                targetState = baseTab,
+                transitionSpec = {
+                    val direction = if (targetState.ordinal >= initialState.ordinal) -1 else 1
+                    val enter = slideInHorizontally(
+                        initialOffsetX = { (it * 0.14f * direction).toInt() },
+                        animationSpec = ScreenPushSpring
+                    ) + fadeIn(animationSpec = tween(280, easing = LinearOutSlowInEasing))
+
+                    val exit = slideOutHorizontally(
+                        targetOffsetX = { (-it * 0.08f * direction).toInt() },
+                        animationSpec = ScreenPushSpring
+                    ) + fadeOut(animationSpec = tween(180, easing = FastOutLinearInEasing))
+
+                    enter togetherWith exit using SizeTransform(clip = false)
+                },
+                label = "base_tab_transition",
+                modifier = Modifier.fillMaxSize()
+            ) { targetTab ->
+                when (targetTab) {
+                    AppTab.HOME -> HomeTabScreen(viewModel = viewModel)
+                    AppTab.SETTINGS -> SettingsTabScreen()
+                    AppTab.AI -> Unit
                 }
             }
-        }
 
-        // Foreground overlay layer for Article Viewer Screen - FULLSCREEN, above scaffold
-        AnimatedVisibility(
-            visible = activeArticle != null,
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            activeArticle?.let { article ->
-                ArticleViewerScreen(
-                    article = article,
-                    onClose = { viewModel.closeArticle() }
+            AnimatedVisibility(
+                visible = isAiVisible,
+                enter = slideInHorizontally(
+                    initialOffsetX = { -it },
+                    animationSpec = ScreenPushSpring
+                ) + fadeIn(animationSpec = tween(280)),
+                exit = slideOutHorizontally(
+                    targetOffsetX = { -it / 4 },
+                    animationSpec = ScreenPushSpring
+                ) + fadeOut(animationSpec = tween(220)),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                AiTabScreen(
+                    viewModel = viewModel,
+                    onBack = { viewModel.setTab(lastPrimaryTab) },
+                    modifier = Modifier.fillMaxSize()
                 )
+            }
+
+            AnimatedVisibility(
+                visible = !isImeVisible && activeArticle == null && !isAiVisible,
+                enter = slideInVertically(
+                    initialOffsetY = { it / 2 },
+                    animationSpec = DockOffsetSpring
+                ) + fadeIn(animationSpec = tween(280)) + scaleIn(
+                    initialScale = 0.94f,
+                    animationSpec = DockVisibilitySpring
+                ),
+                exit = slideOutVertically(
+                    targetOffsetY = { it / 2 },
+                    animationSpec = DockOffsetSpring
+                ) + fadeOut(animationSpec = tween(180)) + scaleOut(
+                    targetScale = 0.94f,
+                    animationSpec = DockVisibilitySpring
+                ),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 18.dp)
+            ) {
+                FloatingNavigationDock(
+                    currentTab = currentTab,
+                    onTabSelected = { viewModel.setTab(it) },
+                    modifier = Modifier.padding(horizontal = 20.dp)
+                )
+            }
+
+            // Foreground overlay layer for Article Viewer Screen
+            AnimatedVisibility(
+                visible = activeArticle != null,
+                enter = slideInVertically(
+                    initialOffsetY = { it / 6 },
+                    animationSpec = spring(dampingRatio = 0.92f, stiffness = 700f)
+                ) + fadeIn(animationSpec = tween(220)),
+                exit = slideOutVertically(
+                    targetOffsetY = { it / 5 },
+                    animationSpec = spring(dampingRatio = 0.96f, stiffness = 780f)
+                ) + fadeOut(animationSpec = tween(180)),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                activeArticle?.let { article ->
+                    ArticleViewerScreen(
+                        article = article,
+                        onClose = { viewModel.closeArticle() }
+                    )
+                }
             }
         }
     }
@@ -172,58 +246,73 @@ fun HomeTabScreen(viewModel: FeqhViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(IosBackground)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(IosBackground, IosGroupedBackground, IosBackground)
+                )
+            )
     ) {
-        // Title row: "الموسوعة الفقهية" on the right, view mode button on the left
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp),
+                .padding(horizontal = 18.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                text = "الموسوعة الفقهية",
-                style = MaterialTheme.typography.titleLarge.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = IosTextPrimary
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "الموسوعة الفقهية",
+                    style = MaterialTheme.typography.headlineSmall.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = IosTextPrimary
+                    )
                 )
-            )
+                Text(
+                    text = "تصفح الأبواب، وابحث، وانتقل بسلاسة داخل تجربة عربية أقرب لتطبيقات iOS الحديثة.",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = IosTextSecondary,
+                        lineHeight = 18.sp
+                    )
+                )
+            }
 
-            // View mode button
             Box {
-                Row(
-                    modifier = Modifier
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { showViewModeMenu = true },
-                    verticalAlignment = Alignment.CenterVertically
+                Surface(
+                    onClick = { showViewModeMenu = true },
+                    shape = RoundedCornerShape(20.dp),
+                    color = IosGlassSurface,
+                    border = BorderStroke(1.dp, IosGlassBorder),
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.ExpandMore,
-                        contentDescription = null,
-                        tint = Color(0xFF007AFF),
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "شكل العرض",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = Color(0xFF007AFF),
-                            fontWeight = FontWeight.Medium
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ExpandMore,
+                            contentDescription = null,
+                            tint = IosBlue,
+                            modifier = Modifier.size(18.dp)
                         )
-                    )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "شكل العرض",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                color = IosBlue,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        )
+                    }
                 }
 
-                // Redesigned dropdown as modern Card with vector icons
                 DropdownMenu(
                     expanded = showViewModeMenu,
                     onDismissRequest = { showViewModeMenu = false }
                 ) {
                     Card(
-                        shape = RoundedCornerShape(12.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 10.dp),
                         colors = CardDefaults.cardColors(containerColor = IosSurface)
                     ) {
                         Column {
@@ -264,9 +353,10 @@ fun HomeTabScreen(viewModel: FeqhViewModel) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-                .background(Color(0xFFE2E2E7), shape = RoundedCornerShape(10.dp))
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 18.dp, vertical = 8.dp)
+                .background(IosGlassSurface, shape = RoundedCornerShape(22.dp))
+                .border(BorderStroke(1.dp, IosGlassBorder), RoundedCornerShape(22.dp))
+                .padding(horizontal = 14.dp, vertical = 12.dp),
             contentAlignment = Alignment.Center
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1065,13 +1155,16 @@ sealed class AiModel {
 // ==========================================
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
+fun AiTabScreen(
+    viewModel: com.example.viewmodel.FeqhViewModel,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     var questionText by remember { mutableStateOf("") }
     val aiProgress by viewModel.aiProgress.collectAsStateWithLifecycle()
     val chatMessages by viewModel.chatMessages.collectAsStateWithLifecycle()
     var showSourcesSheet by remember { mutableStateOf(false) }
     var sourcesForSheet by remember { mutableStateOf<List<com.example.data.model.Article>>(emptyList()) }
-    var sourceLoadError by remember { mutableStateOf(false) }
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val savedIndex = viewModel.aiScrollIndex.collectAsState().value
     val savedOffset = viewModel.aiScrollOffset.collectAsState().value
@@ -1108,8 +1201,29 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
     var selectedModel by remember { mutableStateOf<AiModel>(AiModel.Gemini) }
     var showModelSelector by remember { mutableStateOf(false) }
     
-    // DeepSeek-style large input
+    // Premium iOS-style input state
     var isInputFocused by remember { mutableStateOf(false) }
+    val composerBorderColor by animateColorAsState(
+        targetValue = if (isInputFocused) IosBlue.copy(alpha = 0.24f) else IosSeparator.copy(alpha = 0.9f),
+        animationSpec = tween(260),
+        label = "composerBorder"
+    )
+    val composerShadow by animateDpAsState(
+        targetValue = if (isInputFocused) 22.dp else 14.dp,
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = 480f),
+        label = "composerShadow"
+    )
+    val composerScale by animateFloatAsState(
+        targetValue = if (isInputFocused) 1f else 0.985f,
+        animationSpec = MorphSpring,
+        label = "composerScale"
+    )
+    val canSend = questionText.isNotBlank() && !isAiThinking
+    val sendButtonScale by animateFloatAsState(
+        targetValue = if (canSend) 1f else 0.92f,
+        animationSpec = MorphSpring,
+        label = "sendButtonScale"
+    )
 
     // Auto-scroll to bottom on new messages — only if user was already near bottom
     LaunchedEffect(chatMessages.size, aiProgress) {
@@ -1120,257 +1234,444 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
             val nearBottom = total == 0 || lastVisible >= total - 2
             if (nearBottom) {
                 delay(100)
-                listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
+                listState.animateScrollToItem((listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))
             }
         }
     }
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
-            .background(IosBackground)
-            .navigationBarsPadding()
-            .imePadding()
-    ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Messages area — fills all space above input
-            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            if (chatMessages.isEmpty() && !isAiThinking) {
-                Column(
-                    modifier = Modifier.align(Alignment.Center).fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Icon(
-                        Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        tint = Color(0xFF007AFF),
-                        modifier = Modifier.size(64.dp)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        IosBackground,
+                        IosGroupedBackground,
+                        IosBackground
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
+                )
+            )
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .offset(x = (-48).dp, y = (-80).dp)
+                .size(220.dp)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(IosBlue.copy(alpha = 0.12f), Color.Transparent)
+                    ),
+                    CircleShape
+                )
+        )
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .offset(x = 72.dp, y = 12.dp)
+                .size(180.dp)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(IslamicDeepGreen.copy(alpha = 0.08f), Color.Transparent)
+                    ),
+                    CircleShape
+                )
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(horizontal = 18.dp)
+        ) {
+            Spacer(modifier = Modifier.height(12.dp))
+
+            AnimatedVisibility(
+                visible = true,
+                enter = fadeIn(animationSpec = tween(280)) + slideInVertically(
+                    initialOffsetY = { -it / 3 },
+                    animationSpec = spring(dampingRatio = 0.92f, stiffness = 560f)
+                ),
+                exit = fadeOut(animationSpec = tween(180)),
+                label = "aiHeader"
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 18.dp, end = 56.dp, bottom = 18.dp)
+                ) {
                     Text(
-                        text = "اسأل المفتي الذكي أي سؤال فقهي،\nوسيجيبك بالاعتماد على الموسوعة الفقهية فقط.",
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.bodyLarge.copy(color = IosTextSecondary)
+                        text = "المفتي الذكي",
+                        style = MaterialTheme.typography.headlineSmall.copy(
+                            color = IosTextPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "إجابات فقهية موثقة من الموسوعة مع تجربة محادثة أقرب لتطبيقات iPhone الحديثة.",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = IosTextSecondary,
+                            lineHeight = 22.sp
+                        )
                     )
                 }
-            } else {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 12.dp),
-                    contentPadding = PaddingValues(top = 12.dp, bottom = 96.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    itemsIndexed(chatMessages) { index, msg ->
-                        if (msg.role == "user") {
-                            UserChatBubble(
-                                message = msg.content,
-                                timestamp = msg.timestamp
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                if (chatMessages.isEmpty() && !isAiThinking) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 18.dp)
+                            .fillMaxWidth(),
+                        shape = RoundedCornerShape(32.dp),
+                        color = IosGlassSurface,
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp,
+                        border = BorderStroke(1.dp, IosGlassBorder)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(78.dp)
+                                    .background(
+                                        brush = Brush.linearGradient(
+                                            colors = listOf(IosBlue.copy(alpha = 0.18f), IosBlue.copy(alpha = 0.08f))
+                                        ),
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Default.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = IosBlue,
+                                    modifier = Modifier.size(34.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(18.dp))
+                            Text(
+                                text = "ابدأ محادثة فقهية هادئة وواضحة",
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    color = IosTextPrimary,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                textAlign = TextAlign.Center
                             )
-                        } else {
-                            val isError = msg.content.startsWith("⚠️")
-                            AiChatMessage(
-                                message = msg.content,
-                                sourcesJson = if (!isError) msg.sourcesJson else null,
-                                timestamp = msg.timestamp,
-                                isError = isError,
-                                onViewSources = {
-                                    coroutineScope.launch {
-                                        val articles = viewModel.loadSourcesFromJson(msg.sourcesJson)
-                                        if (articles.isNotEmpty()) {
-                                            sourcesForSheet = articles
-                                            showSourcesSheet = true
-                                        }
-                                    }
-                                },
-                                onRetry = { viewModel.retryLastQuestion() }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = "اسأل عن حكم أو مسألة، وسيعتمد الجواب على نصوص الموسوعة فقط مع الحفاظ على جميع وظائف التطبيق الحالية.",
+                                textAlign = TextAlign.Center,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    color = IosTextSecondary,
+                                    lineHeight = 23.sp
+                                )
                             )
                         }
                     }
-                    if (isAiThinking) {
-                        item {
-                            AiThinkingIndicator(progress = aiProgress)
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(top = 8.dp, bottom = 176.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        itemsIndexed(chatMessages) { _, msg ->
+                            if (msg.role == "user") {
+                                UserChatBubble(
+                                    message = msg.content,
+                                    timestamp = msg.timestamp
+                                )
+                            } else {
+                                val isError = msg.content.startsWith("⚠️")
+                                AiChatMessage(
+                                    message = msg.content,
+                                    sourcesJson = if (!isError) msg.sourcesJson else null,
+                                    timestamp = msg.timestamp,
+                                    isError = isError,
+                                    onViewSources = {
+                                        coroutineScope.launch {
+                                            val articles = viewModel.loadSourcesFromJson(msg.sourcesJson)
+                                            if (articles.isNotEmpty()) {
+                                                sourcesForSheet = articles
+                                                showSourcesSheet = true
+                                            }
+                                        }
+                                    },
+                                    onRetry = { viewModel.retryLastQuestion() }
+                                )
+                            }
+                        }
+                        if (isAiThinking) {
+                            item {
+                                AiThinkingIndicator(progress = aiProgress)
+                            }
                         }
                     }
                 }
             }
         }
-    }
+
+        AnimatedVisibility(
+            visible = true,
+            enter = fadeIn(animationSpec = tween(280)) + scaleIn(
+                initialScale = 0.86f,
+                animationSpec = spring(dampingRatio = 0.85f, stiffness = 620f)
+            ),
+            exit = fadeOut(animationSpec = tween(180)) + scaleOut(targetScale = 0.88f),
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .statusBarsPadding()
+                .padding(top = 18.dp, end = 18.dp)
+        ) {
+            Surface(
+                onClick = onBack,
+                shape = CircleShape,
+                color = IosGlassSurface,
+                border = BorderStroke(1.dp, IosGlassBorder),
+                shadowElevation = 8.dp,
+                tonalElevation = 0.dp,
+                modifier = Modifier.size(46.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "الرجوع",
+                        tint = IosTextPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        }
 
         // ── Scroll-to-Bottom Floating Button ──
         AnimatedVisibility(
             visible = !isNearBottom.value && chatMessages.isNotEmpty(),
-            enter = fadeIn() + scaleIn(),
-            exit = fadeOut() + scaleOut(),
+            enter = fadeIn(animationSpec = tween(220)) + scaleIn(
+                initialScale = 0.82f,
+                animationSpec = spring(dampingRatio = 0.8f, stiffness = 620f)
+            ) + slideInVertically(initialOffsetY = { it / 2 }),
+            exit = fadeOut(animationSpec = tween(160)) + scaleOut(targetScale = 0.88f) + slideOutVertically(targetOffsetY = { it / 2 }),
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 24.dp, bottom = 80.dp)
+                .padding(end = 28.dp, bottom = 124.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .shadow(6.dp, CircleShape)
-                    .background(IosSurface, CircleShape)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) {
-                        coroutineScope.launch {
-                            listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
-                        }
-                    },
-                contentAlignment = Alignment.Center
+            Surface(
+                onClick = {
+                    coroutineScope.launch {
+                        listState.animateScrollToItem((listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))
+                    }
+                },
+                shape = CircleShape,
+                color = IosGlassSurface,
+                border = BorderStroke(1.dp, IosGlassBorder),
+                shadowElevation = 10.dp,
+                tonalElevation = 0.dp,
+                modifier = Modifier.size(44.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Filled.ArrowDownward,
-                    contentDescription = "التمرير لأسفل",
-                    tint = Color(0xFF007AFF),
-                    modifier = Modifier.size(20.dp)
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Filled.ArrowDownward,
+                        contentDescription = "التمرير لأسفل",
+                        tint = IosBlue,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
 
-        // ── DeepSeek-Style Floating Input ──
+        // ── Premium iOS Composer ──
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
-                .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
         ) {
-            Card(
-                shape = RoundedCornerShape(28.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-                colors = CardDefaults.cardColors(containerColor = IosSurface)
-            ) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer {
+                            scaleX = composerScale
+                            scaleY = composerScale
+                        }
+                        .shadow(composerShadow, RoundedCornerShape(34.dp), clip = false),
+                    shape = RoundedCornerShape(34.dp),
+                    color = IosGlassSurface,
+                    shadowElevation = 0.dp,
+                    tonalElevation = 0.dp,
+                    border = BorderStroke(1.dp, composerBorderColor)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = 68.dp)
+                            .padding(start = 14.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 6.dp, end = 8.dp)
+                        ) {
+                            Text(
+                                text = "رسالة جديدة",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    color = IosTextSecondary,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            androidx.compose.foundation.text.BasicTextField(
+                                value = questionText,
+                                onValueChange = { questionText = it },
+                                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                    color = IosTextPrimary,
+                                    fontSize = 17.sp,
+                                    lineHeight = 24.sp
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 28.dp, max = 120.dp)
+                                    .onFocusChanged { isInputFocused = it.isFocused },
+                                maxLines = 5,
+                                decorationBox = { innerTextField ->
+                                    if (questionText.isEmpty()) {
+                                        Text(
+                                            text = "اسأل المفتي الذكي عن أي مسألة فقهية...",
+                                            style = MaterialTheme.typography.bodyLarge.copy(
+                                                color = IosTextSecondary.copy(alpha = 0.92f),
+                                                fontSize = 17.sp
+                                            )
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            )
+                        }
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box {
+                                Surface(
+                                    onClick = { showModelSelector = true },
+                                    shape = RoundedCornerShape(18.dp),
+                                    color = IosBlueSoft,
+                                    tonalElevation = 0.dp,
+                                    shadowElevation = 0.dp,
+                                    modifier = Modifier.size(width = 42.dp, height = 42.dp)
+                                )
+                                {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = selectedModel.icon,
+                                            contentDescription = "اختيار النموذج",
+                                            tint = IosBlue,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+
+                                DropdownMenu(
+                                    expanded = showModelSelector,
+                                    onDismissRequest = { showModelSelector = false },
+                                    containerColor = IosSurface,
+                                    shape = RoundedCornerShape(20.dp),
+                                    shadowElevation = 20.dp
+                                ) {
+                                    AiModel.values().forEach { model ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(
+                                                        imageVector = model.icon,
+                                                        contentDescription = null,
+                                                        tint = if (model == selectedModel) IosBlue else IosTextSecondary,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(10.dp))
+                                                    Text(
+                                                        text = model.displayName,
+                                                        color = IosTextPrimary,
+                                                        fontWeight = if (model == selectedModel) FontWeight.Bold else FontWeight.Medium
+                                                    )
+                                                }
+                                            },
+                                            onClick = {
+                                                selectedModel = model
+                                                showModelSelector = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+
+                            Surface(
+                                onClick = {
+                                    if (canSend) {
+                                        focusManager.clearFocus()
+                                        viewModel.submitAiQuestion(questionText)
+                                        questionText = ""
+                                    }
+                                },
+                                enabled = canSend,
+                                shape = CircleShape,
+                                color = if (canSend) IosBlue else IosSeparator.copy(alpha = 0.8f),
+                                shadowElevation = if (canSend) 8.dp else 0.dp,
+                                tonalElevation = 0.dp,
+                                modifier = Modifier
+                                    .size(50.dp)
+                                    .graphicsLayer {
+                                        scaleX = sendButtonScale
+                                        scaleY = sendButtonScale
+                                    }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.Send,
+                                        contentDescription = "إرسال",
+                                        tint = if (canSend) Color.White else IosTextSecondary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 52.dp)
-                        .padding(start = 4.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
+                        .padding(horizontal = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Send Button — first child in RTL = right side
-                    val canSend = questionText.isNotBlank() && !isAiThinking
-                    val scaleAnim = remember { androidx.compose.animation.core.Animatable(1f) }
-                    
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .graphicsLayer {
-                                scaleX = scaleAnim.value
-                                scaleY = scaleAnim.value
-                            }
-                            .background(
-                                if (canSend)
-                                    Brush.linearGradient(
-                                        colors = listOf(Color(0xFF007AFF), Color(0xFF0055CC))
-                                    )
-                                else
-                                    Brush.linearGradient(
-                                        colors = listOf(Color(0xFFE2E2E7), Color(0xFFE2E2E7))
-                                    ),
-                                shape = CircleShape
-                            )
-                            .clickable(
-                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                                indication = null,
-                                enabled = canSend
-                            ) {
-                                coroutineScope.launch {
-                                    scaleAnim.snapTo(1f)
-                                    scaleAnim.animateTo(0.85f, androidx.compose.animation.core.tween(80))
-                                    scaleAnim.animateTo(1.05f, androidx.compose.animation.core.tween(100))
-                                    scaleAnim.animateTo(1f, androidx.compose.animation.core.tween(60))
-                                }
-                                focusManager.clearFocus()
-                                viewModel.submitAiQuestion(questionText)
-                                questionText = ""
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Filled.ArrowUpward,
-                            contentDescription = "إرسال",
-                            tint = if (canSend) Color.White else IosTextSecondary,
-                            modifier = Modifier.size(20.dp)
+                    Text(
+                        text = if (isAiThinking) "جاري تجهيز الإجابة..." else "المحادثة محفوظة وتستعيد موقع التمرير تلقائياً",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            color = IosTextSecondary,
+                            fontWeight = FontWeight.Medium
                         )
-                    }
-
-                    Spacer(modifier = Modifier.width(10.dp))
-
-                    // Text Input — middle, fills remaining space
-                    Box(modifier = Modifier.weight(1f)) {
-                        androidx.compose.foundation.text.BasicTextField(
-                            value = questionText,
-                            onValueChange = { questionText = it },
-                            textStyle = MaterialTheme.typography.bodyLarge.copy(
-                                color = IosTextPrimary,
-                                fontSize = 16.sp
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 32.dp, max = 100.dp),
-                            maxLines = 5,
-                            decorationBox = { innerTextField ->
-                                if (questionText.isEmpty()) {
-                                    Text(
-                                        text = "اسأل المفتي الذكي...",
-                                        style = MaterialTheme.typography.bodyLarge.copy(
-                                            color = IosTextSecondary,
-                                            fontSize = 16.sp
-                                        )
-                                    )
-                                }
-                                innerTextField()
-                            }
+                    )
+                    if (questionText.isNotEmpty()) {
+                        Text(
+                            text = "${questionText.length}/500",
+                            style = MaterialTheme.typography.labelMedium.copy(color = IosTextSecondary)
                         )
-                    }
-
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    // Model Selector Button — last child in RTL = left side
-                    Box {
-                        IconButton(
-                            onClick = { showModelSelector = true },
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Icon(
-                                imageVector = selectedModel.icon,
-                                contentDescription = "اختيار النموذج",
-                                tint = Color(0xFF007AFF),
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-
-                        DropdownMenu(
-                            expanded = showModelSelector,
-                            onDismissRequest = { showModelSelector = false }
-                        ) {
-                            AiModel.values().forEach { model ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                imageVector = model.icon,
-                                                contentDescription = null,
-                                                tint = if (model == selectedModel) Color(0xFF007AFF) else IosTextSecondary,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text(
-                                                text = model.displayName,
-                                                fontWeight = if (model == selectedModel) FontWeight.Bold else FontWeight.Normal
-                                            )
-                                        }
-                                    },
-                                    onClick = {
-                                        selectedModel = model
-                                        showModelSelector = false
-                                    }
-                                )
-                            }
-                        }
                     }
                 }
             }
@@ -1431,21 +1732,21 @@ fun UserChatBubble(message: String, timestamp: Long) {
     val timeText = remember(timestamp) { formatTimestamp(timestamp) }
     Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.Start // User on RIGHT in RTL
+        horizontalAlignment = Alignment.Start
     ) {
-        Box(
+        Surface(
             modifier = Modifier
                 .widthIn(max = 300.dp)
-                .background(
-                    Color(0xFF007AFF),
-                    shape = RoundedCornerShape(
-                        topStart = 18.dp,
-                        topEnd = 18.dp,
-                        bottomStart = 18.dp,
-                        bottomEnd = 4.dp
-                    )
-                )
-                .padding(horizontal = 16.dp, vertical = 10.dp)
+                .shadow(10.dp, RoundedCornerShape(24.dp), clip = false),
+            shape = RoundedCornerShape(
+                topStart = 24.dp,
+                topEnd = 24.dp,
+                bottomStart = 24.dp,
+                bottomEnd = 10.dp
+            ),
+            color = IosBlue,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
         ) {
             Text(
                 text = message,
@@ -1453,13 +1754,13 @@ fun UserChatBubble(message: String, timestamp: Long) {
                 style = MaterialTheme.typography.bodyLarge.copy(
                     fontSize = 16.sp,
                     lineHeight = 24.sp
-                )
+                ),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
             )
         }
-        // Timestamp below user bubble
         Text(
             text = timeText,
-            color = Color(0xFFC7C7CC),
+            color = IosTextSecondary.copy(alpha = 0.8f),
             fontSize = 11.sp,
             modifier = Modifier.padding(start = 4.dp, top = 2.dp)
         )
@@ -1479,28 +1780,23 @@ fun AiChatMessage(
 
     Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.Start // AI on RIGHT
+        horizontalAlignment = Alignment.Start
     ) {
         if (isError) {
-            // Error message with retry button
-            Row(
+            Surface(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
-                horizontalArrangement = Arrangement.Start
+                    .widthIn(max = 320.dp)
+                    .shadow(8.dp, RoundedCornerShape(24.dp), clip = false),
+                shape = RoundedCornerShape(24.dp),
+                color = Color(0xFFFFF4F3),
+                border = BorderStroke(1.dp, IosDanger.copy(alpha = 0.16f)),
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp
             ) {
-                Box(
-                    modifier = Modifier
-                        .widthIn(max = 300.dp)
-                        .background(
-                            Color(0xFFFFEBEE),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                ) {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
                     Text(
                         text = message.removePrefix("⚠️ ").removePrefix("⚠️"),
-                        color = Color(0xFFD32F2F),
+                        color = IosDanger,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             fontSize = 15.sp,
                             lineHeight = 24.sp
@@ -1515,30 +1811,29 @@ fun AiChatMessage(
             ) {
                 Text(
                     text = "↻ إعادة المحاولة",
-                    color = Color(0xFF007AFF),
+                    color = IosBlue,
                     fontWeight = FontWeight.Medium,
                     fontSize = 14.sp
                 )
             }
         } else {
-            // Extract خلاصة القول section
             val (summary, remainingText) = remember(message) { extractSummarySection(message) }
             val formattedMainText = remember(remainingText) { parseAiResponse(remainingText) }
 
-            // Show خلاصة القول in a nice card if present
             if (summary != null) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 6.dp),
-                    shape = RoundedCornerShape(14.dp),
+                        .padding(vertical = 4.dp),
+                    shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFFF5F0E8) // Warm beige
+                        containerColor = Color(0xFFFFFBF3)
                     ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    border = BorderStroke(1.dp, Color(0x14D4A84B))
                 ) {
                     Column(
-                        modifier = Modifier.padding(14.dp)
+                        modifier = Modifier.padding(16.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
@@ -1567,29 +1862,38 @@ fun AiChatMessage(
                 }
             }
 
-            // Main AI response text with ClickableText for citations
             if (remainingText.isNotEmpty()) {
-                ClickableText(
-                    text = formattedMainText,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontSize = 16.sp,
-                        lineHeight = 28.sp,
-                        textAlign = TextAlign.Justify,
-                        color = IosTextPrimary
-                    ),
+                Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 4.dp),
-                    onClick = { offset ->
-                        formattedMainText.getStringAnnotations("citation", offset, offset)
-                            .firstOrNull()?.let {
-                                onViewSources()
-                            }
+                        .shadow(8.dp, RoundedCornerShape(28.dp), clip = false),
+                    shape = RoundedCornerShape(28.dp),
+                    color = IosGlassSurface,
+                    border = BorderStroke(1.dp, IosGlassBorder),
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp
+                ) {
+                    ClickableText(
+                        text = formattedMainText,
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontSize = 16.sp,
+                            lineHeight = 28.sp,
+                            textAlign = TextAlign.Justify,
+                            color = IosTextPrimary
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 18.dp, vertical = 16.dp),
+                        onClick = { offset ->
+                            formattedMainText.getStringAnnotations("citation", offset, offset)
+                                .firstOrNull()?.let {
+                                    onViewSources()
+                                }
+                        }
                     }
-                )
+                }
             }
 
-            // Sources button (if available)
             if (sourcesJson != null && sourcesJson != "[]" && sourcesJson != "null") {
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
@@ -1599,8 +1903,9 @@ fun AiChatMessage(
                     horizontalArrangement = Arrangement.Start
                 ) {
                     Surface(
-                        shape = RoundedCornerShape(999.dp),  // Fully rounded pill
-                        color = Color(0xFFC8E6C9),  // Slightly darker green
+                        shape = RoundedCornerShape(999.dp),
+                        color = Color(0xFFE8F6EA),
+                        border = BorderStroke(1.dp, IslamicDeepGreen.copy(alpha = 0.12f)),
                         modifier = Modifier.clickable { onViewSources() }
                     ) {
                         Row(
@@ -1625,7 +1930,7 @@ fun AiChatMessage(
                             Icon(
                                 Icons.Filled.KeyboardArrowLeft,
                                 contentDescription = null,
-                                tint = Color(0xFF1B5E20),
+                                tint = IslamicDeepGreen,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -1634,16 +1939,13 @@ fun AiChatMessage(
             }
         }
 
-        // Timestamp
         Text(
             text = timeText,
-            color = Color(0xFFC7C7CC),
+            color = IosTextSecondary.copy(alpha = 0.8f),
             fontSize = 11.sp,
             modifier = Modifier.padding(start = 4.dp, top = 4.dp)
         )
     }
-}
-
 private fun formatTimestamp(millis: Long): String {
     val now = System.currentTimeMillis()
     val diff = now - millis
@@ -1661,17 +1963,20 @@ private fun formatTimestamp(millis: Long): String {
 
 @Composable
 fun AiThinkingIndicator(progress: com.example.data.api.AiProgress) {
-    Column(
+    Surface(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .widthIn(max = 320.dp)
+            .padding(vertical = 8.dp),
+        shape = RoundedCornerShape(22.dp),
+        color = IosGlassSurface,
+        border = BorderStroke(1.dp, IosGlassBorder),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
     ) {
-        // Animated dots
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 4.dp)
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
         ) {
-            // Pulsing dots
             repeat(3) { index ->
                 val infiniteTransition = rememberInfiniteTransition(label = "dots")
                 val alpha by infiniteTransition.animateFloat(
@@ -1687,13 +1992,12 @@ fun AiThinkingIndicator(progress: com.example.data.api.AiProgress) {
                     modifier = Modifier
                         .size(8.dp)
                         .padding(horizontal = 2.dp)
-                        .background(Color(0xFF007AFF).copy(alpha = alpha), shape = CircleShape)
+                        .background(IosBlue.copy(alpha = alpha), shape = CircleShape)
                 )
             }
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // Progress text
             val progressText = when (progress) {
                 is com.example.data.api.AiProgress.ReceivedQuestion -> "تم استلام السؤال..."
                 is com.example.data.api.AiProgress.AnalyzingScope -> "جاري تحليل السؤال..."
@@ -2258,93 +2562,106 @@ private fun extractSummarySection(text: String): Pair<String?, String> {
 }
 
 // ==========================================
-// ELEGANT BOTTOM TAB BAR COMPONENT
+// FLOATING IOS NAVIGATION DOCK
 // ==========================================
 @Composable
-fun ElegantBottomBar(
+fun FloatingNavigationDock(
     currentTab: AppTab,
     onTabSelected: (AppTab) -> Unit,
-    showShadow: Boolean = false
+    modifier: Modifier = Modifier
 ) {
-    Column {
-        if (showShadow) {
-            // Subtle shadow gradient above bottom nav
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(8.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                Color(0x0A000000) // very subtle shadow
-                            )
-                        )
-                    )
+    val items = remember {
+        listOf(
+            DockDestination(
+                tab = AppTab.HOME,
+                selectedIcon = Icons.Default.MenuBook,
+                unselectedIcon = Icons.Outlined.MenuBook,
+                contentDescription = "الموسوعة"
+            ),
+            DockDestination(
+                tab = AppTab.AI,
+                selectedIcon = Icons.Default.AutoAwesome,
+                unselectedIcon = Icons.Outlined.AutoAwesome,
+                contentDescription = "الذكاء الاصطناعي"
+            ),
+            DockDestination(
+                tab = AppTab.SETTINGS,
+                selectedIcon = Icons.Default.Settings,
+                unselectedIcon = Icons.Outlined.Settings,
+                contentDescription = "الإعدادات"
             )
-        } else {
-            HorizontalDivider(color = IosSeparator, thickness = 0.5.dp)
-        }
-        NavigationBar(
-            containerColor = IosSurface,
-            tonalElevation = 0.dp,
-            modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars).height(64.dp)
+        )
+    }
+
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(34.dp),
+        color = IosGlassSurface,
+        border = BorderStroke(1.dp, IosGlassBorder),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .shadow(18.dp, RoundedCornerShape(34.dp), clip = false)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            NavigationBarItem(
-                selected = currentTab == AppTab.HOME,
-                onClick = { onTabSelected(AppTab.HOME) },
-                label = { Text("الموسوعة", fontSize = 11.sp, fontWeight = FontWeight.Medium, fontFamily = IbmPlexArabicFontFamily) },
-                icon = {
-                    Icon(
-                        imageVector = if (currentTab == AppTab.HOME) Icons.Default.MenuBook else Icons.Outlined.MenuBook,
-                        contentDescription = "Home"
-                    )
-                },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = IslamicDeepGreen,
-                    selectedTextColor = IslamicDeepGreen,
-                    unselectedIconColor = IosTextSecondary,
-                    unselectedTextColor = IosTextSecondary,
-                    indicatorColor = IosSurface
+            items.forEach { item ->
+                DockItem(
+                    selected = currentTab == item.tab,
+                    icon = if (currentTab == item.tab) item.selectedIcon else item.unselectedIcon,
+                    contentDescription = item.contentDescription,
+                    onClick = { onTabSelected(item.tab) }
                 )
-            )
+            }
+        }
+    }
+}
 
-            NavigationBarItem(
-                selected = currentTab == AppTab.AI,
-                onClick = { onTabSelected(AppTab.AI) },
-                label = { Text("الذكاء الاصطناعي", fontSize = 11.sp, fontWeight = FontWeight.Medium, fontFamily = IbmPlexArabicFontFamily) },
-                icon = {
-                    Icon(
-                        imageVector = if (currentTab == AppTab.AI) Icons.Default.AutoAwesome else Icons.Outlined.AutoAwesome,
-                        contentDescription = "AI"
-                    )
-                },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = IslamicDeepGreen,
-                    selectedTextColor = IslamicDeepGreen,
-                    unselectedIconColor = IosTextSecondary,
-                    unselectedTextColor = IosTextSecondary,
-                    indicatorColor = IosSurface
-                )
-            )
+@Composable
+private fun DockItem(
+    selected: Boolean,
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit
+) {
+    val containerColor by animateColorAsState(
+        targetValue = if (selected) IosBlueSoft else Color.Transparent,
+        animationSpec = tween(220),
+        label = "dockContainer"
+    )
+    val iconTint by animateColorAsState(
+        targetValue = if (selected) IosBlue else IosTextSecondary,
+        animationSpec = tween(220),
+        label = "dockIconTint"
+    )
+    val itemScale by animateFloatAsState(
+        targetValue = if (selected) 1f else 0.94f,
+        animationSpec = MorphSpring,
+        label = "dockScale"
+    )
 
-            NavigationBarItem(
-                selected = currentTab == AppTab.SETTINGS,
-                onClick = { onTabSelected(AppTab.SETTINGS) },
-                label = { Text("الإعدادات", fontSize = 11.sp, fontWeight = FontWeight.Medium, fontFamily = IbmPlexArabicFontFamily) },
-                icon = {
-                    Icon(
-                        imageVector = if (currentTab == AppTab.SETTINGS) Icons.Default.Settings else Icons.Outlined.Settings,
-                        contentDescription = "Settings"
-                    )
-                },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = IslamicDeepGreen,
-                    selectedTextColor = IslamicDeepGreen,
-                    unselectedIconColor = IosTextSecondary,
-                    unselectedTextColor = IosTextSecondary,
-                    indicatorColor = IosSurface
-                )
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = containerColor,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+        modifier = Modifier
+            .size(52.dp)
+            .graphicsLayer {
+                scaleX = itemScale
+                scaleY = itemScale
+            }
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = iconTint,
+                modifier = Modifier.size(if (selected) 24.dp else 22.dp)
             )
         }
     }
