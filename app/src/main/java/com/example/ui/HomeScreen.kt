@@ -86,23 +86,11 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
         // NO Scaffold — true edge-to-edge: content draws behind system bars
         Box(modifier = Modifier.fillMaxSize()) {
 
-            // Layer 1: Tab content — renders edge-to-edge (each tab handles its own insets)
+            // Layer 1: Tab content — crossfade for smooth, no-black-flash transitions
             AnimatedContent(
                 targetState = currentTab,
                 transitionSpec = {
-                    val springSpec = spring<IntOffset>(dampingRatio = 0.85f, stiffness = 350f)
-                    val isForward = targetState.ordinal > initialState.ordinal
-                    if (isForward) {
-                        // Push: new screen slides in from trailing side
-                        val enter = slideInHorizontally(animationSpec = springSpec) { w -> w / 2 } + fadeIn(tween(220))
-                        val exit = slideOutHorizontally(animationSpec = springSpec) { w -> -w / 4 } + fadeOut(tween(180))
-                        enter togetherWith exit
-                    } else {
-                        // Pop: new screen slides in from leading side
-                        val enter = slideInHorizontally(animationSpec = springSpec) { w -> -w / 4 } + fadeIn(tween(220))
-                        val exit = slideOutHorizontally(animationSpec = springSpec) { w -> w / 2 } + fadeOut(tween(180))
-                        enter togetherWith exit
-                    }
+                    fadeIn(tween(300)) togetherWith fadeOut(tween(150))
                 },
                 label = "tab_transitions"
             ) { targetTab ->
@@ -145,19 +133,13 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .statusBarsPadding()
-                    .padding(top = 6.dp, start = 8.dp)
+                    .padding(top = 6.dp, start = 12.dp)
             ) {
                 Box(
                     modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(IosSurface.copy(alpha = 0.9f), CircleShape)
-                        .border(
-                            width = 0.5.dp,
-                            color = Color(0xFFC8C8CC).copy(alpha = 0.4f),
-                            shape = CircleShape
-                        )
-                        .shadow(4.dp, CircleShape)
+                        .size(40.dp)
+                        .shadow(4.dp, RoundedCornerShape(12.dp))
+                        .background(IosSurface, RoundedCornerShape(12.dp))
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
@@ -168,7 +150,7 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
                         imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                         contentDescription = "العودة للموسوعة",
                         tint = Color(0xFF007AFF),
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }
@@ -1196,7 +1178,7 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 12.dp),
-                    contentPadding = PaddingValues(top = 12.dp, bottom = 96.dp),
+                    contentPadding = PaddingValues(top = 60.dp, bottom = 96.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     itemsIndexed(chatMessages) { index, msg ->
@@ -1243,6 +1225,22 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                             colors = listOf(
                                 IosBackground.copy(alpha = 0f),
                                 IosBackground
+                            )
+                        )
+                    )
+            )
+
+            // Top fade gradient — fades content into status bar / back button area
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(60.dp)
+                    .align(Alignment.TopCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                IosBackground,
+                                IosBackground.copy(alpha = 0f)
                             )
                         )
                     )
@@ -2321,15 +2319,15 @@ fun ElegantBottomBar(
     currentTab: AppTab,
     onTabSelected: (AppTab) -> Unit,
 ) {
-    // Truly floating iOS-style capsule dock — no parent container
+    // Truly floating iOS-style capsule dock — detached from bottom edge
     Row(
         modifier = Modifier
             .widthIn(min = 0.dp, max = 240.dp)
             .height(48.dp)
             .navigationBarsPadding()
-            .padding(bottom = 12.dp)
+            .padding(bottom = 8.dp, start = 12.dp, end = 12.dp)
             .background(
-                color = IosSurface.copy(alpha = 0.88f),
+                color = IosSurface,
                 shape = RoundedCornerShape(24.dp)
             )
             .border(

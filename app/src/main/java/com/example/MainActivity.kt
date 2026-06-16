@@ -45,7 +45,8 @@ class MainActivity : ComponentActivity() {
         // Ensure system bars are transparent for true edge-to-edge
         window.setStatusBarColor(android.graphics.Color.TRANSPARENT)
         window.setNavigationBarColor(android.graphics.Color.TRANSPARENT)
-        window.decorView.systemUiVisibility = 0 // Clear any forced light/dark
+        // Light status bar = dark icons (black text/icons on transparent status bar)
+        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = true
         
         setContent {
             var fontErrorMsg by remember { mutableStateOf<String?>(null) }
