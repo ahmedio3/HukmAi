@@ -86,11 +86,20 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
         // NO Scaffold — true edge-to-edge: content draws behind system bars
         Box(modifier = Modifier.fillMaxSize()) {
 
-            // Layer 1: Tab content — crossfade for smooth, no-black-flash transitions
+            // Layer 1: Tab content — iOS-style push/pop slide transitions
             AnimatedContent(
                 targetState = currentTab,
                 transitionSpec = {
-                    fadeIn(tween(300)) togetherWith fadeOut(tween(150))
+                    val isForward = targetState.ordinal > initialState.ordinal
+                    if (isForward) {
+                        // Push: new screen slides in from trailing side (LTR=right, RTL=left)
+                        (slideInHorizontally(tween(350)) { w -> w } + fadeIn(tween(250)))
+                            .togetherWith(slideOutHorizontally(tween(350)) { w -> -w / 3 } + fadeOut(tween(200)))
+                    } else {
+                        // Pop: new screen slides in from leading side (LTR=left, RTL=right)
+                        (slideInHorizontally(tween(350)) { w -> -w / 3 } + fadeIn(tween(250)))
+                            .togetherWith(slideOutHorizontally(tween(350)) { w -> w } + fadeOut(tween(200)))
+                    }
                 },
                 label = "tab_transitions"
             ) { targetTab ->
@@ -119,7 +128,7 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
                 )
             }
 
-            // Layer 3: AI back button — overlay above everything, respects status bar
+            // Layer 3: AI back button — iOS-style circle, dark chevron
             AnimatedVisibility(
                 visible = currentTab == AppTab.AI && activeArticle == null,
                 enter = fadeIn(tween(250)) + scaleIn(
@@ -137,9 +146,9 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
             ) {
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
-                        .shadow(4.dp, RoundedCornerShape(12.dp))
-                        .background(IosSurface, RoundedCornerShape(12.dp))
+                        .size(38.dp)
+                        .shadow(4.dp, CircleShape)
+                        .background(IosSurface, CircleShape)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
@@ -147,10 +156,10 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        imageVector = Icons.Filled.KeyboardArrowRight,
                         contentDescription = "العودة للموسوعة",
-                        tint = Color(0xFF007AFF),
-                        modifier = Modifier.size(22.dp)
+                        tint = IosTextPrimary,
+                        modifier = Modifier.size(26.dp)
                     )
                 }
             }
@@ -1178,7 +1187,7 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 12.dp),
-                    contentPadding = PaddingValues(top = 60.dp, bottom = 96.dp),
+                    contentPadding = PaddingValues(top = 85.dp, bottom = 96.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     itemsIndexed(chatMessages) { index, msg ->
@@ -1234,7 +1243,7 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(60.dp)
+                    .height(75.dp)
                     .align(Alignment.TopCenter)
                     .background(
                         Brush.verticalGradient(
@@ -2319,60 +2328,56 @@ fun ElegantBottomBar(
     currentTab: AppTab,
     onTabSelected: (AppTab) -> Unit,
 ) {
-    // Truly floating iOS-style capsule dock — detached from bottom edge
+    // Truly floating iOS-style capsule dock — taller, narrower, more premium
     Row(
         modifier = Modifier
-            .widthIn(min = 0.dp, max = 240.dp)
-            .height(48.dp)
+            .widthIn(min = 0.dp, max = 210.dp)
+            .height(56.dp)
             .navigationBarsPadding()
-            .padding(bottom = 8.dp, start = 12.dp, end = 12.dp)
+            .padding(bottom = 12.dp)
             .background(
                 color = IosSurface,
-                shape = RoundedCornerShape(24.dp)
+                shape = RoundedCornerShape(28.dp)
             )
             .border(
                 width = 0.5.dp,
-                color = Color(0xFFC8C8CC).copy(alpha = 0.4f),
-                shape = RoundedCornerShape(24.dp)
+                color = Color(0xFFC8C8CC).copy(alpha = 0.35f),
+                shape = RoundedCornerShape(28.dp)
             )
             .shadow(
-                elevation = 10.dp,
-                shape = RoundedCornerShape(24.dp),
-                ambientColor = Color.Black.copy(alpha = 0.1f),
-                spotColor = Color.Black.copy(alpha = 0.15f)
+                elevation = 12.dp,
+                shape = RoundedCornerShape(28.dp),
+                ambientColor = Color.Black.copy(alpha = 0.08f),
+                spotColor = Color.Black.copy(alpha = 0.12f)
             )
-            .padding(horizontal = 6.dp),
+            .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceEvenly
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-            // Home
-            DockIcon(
-                icon = if (currentTab == AppTab.HOME) Icons.Default.MenuBook else Icons.Outlined.MenuBook,
-                contentDescription = "الموسوعة",
-                isSelected = currentTab == AppTab.HOME,
-                onClick = { onTabSelected(AppTab.HOME) }
-            )
+        // Home
+        DockIcon(
+            icon = if (currentTab == AppTab.HOME) Icons.Default.MenuBook else Icons.Outlined.MenuBook,
+            contentDescription = "الموسوعة",
+            isSelected = currentTab == AppTab.HOME,
+            onClick = { onTabSelected(AppTab.HOME) }
+        )
 
-            Spacer(modifier = Modifier.width(4.dp))
+        // AI
+        DockIcon(
+            icon = if (currentTab == AppTab.AI) Icons.Default.AutoAwesome else Icons.Outlined.AutoAwesome,
+            contentDescription = "الذكاء الاصطناعي",
+            isSelected = currentTab == AppTab.AI,
+            onClick = { onTabSelected(AppTab.AI) }
+        )
 
-            // AI
-            DockIcon(
-                icon = if (currentTab == AppTab.AI) Icons.Default.AutoAwesome else Icons.Outlined.AutoAwesome,
-                contentDescription = "الذكاء الاصطناعي",
-                isSelected = currentTab == AppTab.AI,
-                onClick = { onTabSelected(AppTab.AI) }
-            )
-
-            Spacer(modifier = Modifier.width(4.dp))
-
-            // Settings
-            DockIcon(
-                icon = if (currentTab == AppTab.SETTINGS) Icons.Default.Settings else Icons.Outlined.Settings,
-                contentDescription = "الإعدادات",
-                isSelected = currentTab == AppTab.SETTINGS,
-                onClick = { onTabSelected(AppTab.SETTINGS) }
-            )
-        }
+        // Settings
+        DockIcon(
+            icon = if (currentTab == AppTab.SETTINGS) Icons.Default.Settings else Icons.Outlined.Settings,
+            contentDescription = "الإعدادات",
+            isSelected = currentTab == AppTab.SETTINGS,
+            onClick = { onTabSelected(AppTab.SETTINGS) }
+        )
+    }
 }
 
 @Composable
@@ -2384,7 +2389,7 @@ private fun DockIcon(
 ) {
     Box(
         modifier = Modifier
-            .size(40.dp)
+            .size(44.dp)
             .clip(CircleShape)
             .then(
                 if (isSelected) Modifier.background(IslamicDeepGreen.copy(alpha = 0.12f))
@@ -2400,7 +2405,7 @@ private fun DockIcon(
             imageVector = icon,
             contentDescription = contentDescription,
             tint = if (isSelected) IslamicDeepGreen else IosTextSecondary,
-            modifier = Modifier.size(22.dp)
+            modifier = Modifier.size(24.dp)
         )
     }
 }
