@@ -47,6 +47,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -132,7 +133,7 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
                 AnimatedContent(
                     targetState = currentTab,
                     transitionSpec = {
-                        val springSpec = spring<Float>(dampingRatio = 0.85f, stiffness = 350f)
+                        val springSpec = spring<IntOffset>(dampingRatio = 0.85f, stiffness = 350f)
                         when {
                             initialState == AppTab.HOME && targetState == AppTab.AI -> {
                                 val enter = slideInHorizontally(animationSpec = springSpec) { w -> w / 2 } + fadeIn(tween(220))
