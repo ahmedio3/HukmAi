@@ -132,28 +132,21 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
                 AnimatedContent(
                     targetState = currentTab,
                     transitionSpec = {
-                        val isPushToAi = initialState == AppTab.HOME && targetState == AppTab.AI
-                        val isPopFromAi = initialState == AppTab.AI && targetState != AppTab.AI
-                        if (isPushToAi) {
-                            // AI slides in from the end (right in RTL), current slides out left
-                            (slideInHorizontally(
-                                animationSpec = spring(dampingRatio = 0.85f, stiffness = 350f)
-                            ) { width -> width / 2 } + fadeIn(animationSpec = tween(220)))
-                                togetherWith
-                            (slideOutHorizontally(
-                                animationSpec = spring(dampingRatio = 0.85f, stiffness = 350f)
-                            ) { width -> -width / 4 } + fadeOut(animationSpec = tween(180)))
-                        } else if (isPopFromAi) {
-                            // Back from AI: content slides in from the start, AI slides out right
-                            (slideInHorizontally(
-                                animationSpec = spring(dampingRatio = 0.85f, stiffness = 350f)
-                            ) { width -> -width / 4 } + fadeIn(animationSpec = tween(220)))
-                                togetherWith
-                            (slideOutHorizontally(
-                                animationSpec = spring(dampingRatio = 0.85f, stiffness = 350f)
-                            ) { width -> width / 2 } + fadeOut(animationSpec = tween(180)))
-                        } else {
-                            fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(200))
+                        val springSpec = spring<Float>(dampingRatio = 0.85f, stiffness = 350f)
+                        when {
+                            initialState == AppTab.HOME && targetState == AppTab.AI -> {
+                                val enter = slideInHorizontally(animationSpec = springSpec) { w -> w / 2 } + fadeIn(tween(220))
+                                val exit = slideOutHorizontally(animationSpec = springSpec) { w -> -w / 4 } + fadeOut(tween(180))
+                                enter togetherWith exit
+                            }
+                            initialState == AppTab.AI && targetState != AppTab.AI -> {
+                                val enter = slideInHorizontally(animationSpec = springSpec) { w -> -w / 4 } + fadeIn(tween(220))
+                                val exit = slideOutHorizontally(animationSpec = springSpec) { w -> w / 2 } + fadeOut(tween(180))
+                                enter togetherWith exit
+                            }
+                            else -> {
+                                fadeIn(tween(200)) togetherWith fadeOut(tween(200))
+                            }
                         }
                     },
                     label = "tab_transitions"
@@ -1176,7 +1169,6 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(top = 8.dp, start = 8.dp)
-                .zIndex(10f)
         ) {
             Box(
                 modifier = Modifier
