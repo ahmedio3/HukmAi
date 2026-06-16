@@ -49,8 +49,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.model.Article
 import com.example.data.model.TreeNode
@@ -147,7 +149,7 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
                         animationSpec = ScreenPushSpring
                     ) + fadeOut(animationSpec = tween(180, easing = FastOutLinearInEasing))
 
-                    enter togetherWith exit using SizeTransform(clip = false)
+                    enter togetherWith exit
                 },
                 label = "base_tab_transition",
                 modifier = Modifier.fillMaxSize()
@@ -1205,24 +1207,20 @@ fun AiTabScreen(
     var isInputFocused by remember { mutableStateOf(false) }
     val composerBorderColor by animateColorAsState(
         targetValue = if (isInputFocused) IosBlue.copy(alpha = 0.24f) else IosSeparator.copy(alpha = 0.9f),
-        animationSpec = tween(260),
-        label = "composerBorder"
+        animationSpec = tween(260)
     )
     val composerShadow by animateDpAsState(
         targetValue = if (isInputFocused) 22.dp else 14.dp,
         animationSpec = spring(dampingRatio = 0.9f, stiffness = 480f),
-        label = "composerShadow"
     )
     val composerScale by animateFloatAsState(
         targetValue = if (isInputFocused) 1f else 0.985f,
         animationSpec = MorphSpring,
-        label = "composerScale"
     )
     val canSend = questionText.isNotBlank() && !isAiThinking
     val sendButtonScale by animateFloatAsState(
         targetValue = if (canSend) 1f else 0.92f,
         animationSpec = MorphSpring,
-        label = "sendButtonScale"
     )
 
     // Auto-scroll to bottom on new messages — only if user was already near bottom
@@ -1294,8 +1292,7 @@ fun AiTabScreen(
                     initialOffsetY = { -it / 3 },
                     animationSpec = spring(dampingRatio = 0.92f, stiffness = 560f)
                 ),
-                exit = fadeOut(animationSpec = tween(180)),
-                label = "aiHeader"
+                exit = fadeOut(animationSpec = tween(180))
             ) {
                 Column(
                     modifier = Modifier
@@ -1642,7 +1639,7 @@ fun AiTabScreen(
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
-                                        Icons.AutoMirrored.Filled.Send,
+                                        Icons.Filled.Send,
                                         contentDescription = "إرسال",
                                         tint = if (canSend) Color.White else IosTextSecondary,
                                         modifier = Modifier.size(20.dp)
@@ -2630,17 +2627,14 @@ private fun DockItem(
     val containerColor by animateColorAsState(
         targetValue = if (selected) IosBlueSoft else Color.Transparent,
         animationSpec = tween(220),
-        label = "dockContainer"
     )
     val iconTint by animateColorAsState(
         targetValue = if (selected) IosBlue else IosTextSecondary,
         animationSpec = tween(220),
-        label = "dockIconTint"
     )
     val itemScale by animateFloatAsState(
         targetValue = if (selected) 1f else 0.94f,
         animationSpec = MorphSpring,
-        label = "dockScale"
     )
 
     Surface(
