@@ -1250,35 +1250,39 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
         }
 
         // ── Scroll-to-Bottom Floating Button ──
-        AnimatedVisibility(
-            visible = !isNearBottom.value && chatMessages.isNotEmpty(),
-            enter = fadeIn() + scaleIn(),
-            exit = fadeOut() + scaleOut(),
+        Box(
             modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 24.dp, bottom = 130.dp)
+                .fillMaxSize()
+                .padding(end = 24.dp, bottom = 130.dp),
+            contentAlignment = Alignment.BottomEnd
         ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .shadow(6.dp, CircleShape)
-                    .background(IosSurface, CircleShape)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) {
-                        coroutineScope.launch {
-                            listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
-                        }
-                    },
-                contentAlignment = Alignment.Center
+            AnimatedVisibility(
+                visible = !isNearBottom.value && chatMessages.isNotEmpty(),
+                enter = fadeIn() + scaleIn(),
+                exit = fadeOut() + scaleOut()
             ) {
-                Icon(
-                    imageVector = Icons.Filled.ArrowDownward,
-                    contentDescription = "التمرير لأسفل",
-                    tint = Color(0xFF007AFF),
-                    modifier = Modifier.size(20.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .shadow(6.dp, CircleShape)
+                        .background(IosSurface, CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            coroutineScope.launch {
+                                listState.animateScrollToItem(listState.layoutInfo.totalItemsCount - 1)
+                            }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.ArrowDownward,
+                        contentDescription = "التمرير لأسفل",
+                        tint = Color(0xFF007AFF),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
 
