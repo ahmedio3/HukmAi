@@ -26,7 +26,7 @@ jobs:
       - name: Verify database exists
         run: ls -lh app/src/main/assets/databases/feqhia.db
       
-      - name: Build debug with Gradle
+      - name: Build with Gradle
         env:
           API_KEY_ROUTER_MAIN: ${{ secrets.API_KEY_ROUTER_MAIN }}
           API_KEY_ROUTER_FALLBACK: ${{ secrets.API_KEY_ROUTER_FALLBACK }}

@@ -82,71 +82,38 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
             BackHandler { viewModel.clearSearch() }
         }
 
-        val view = androidx.compose.ui.platform.LocalView.current
-        val context = view.context
-        if (!view.isInEditMode) {
-            SideEffect {
-                val window = (context as? android.app.Activity)?.window
-                if (window != null) {
-                    val color = if (activeArticle != null || currentTab == AppTab.AI) {
-                        IosSurface
-                    } else {
-                        IosBackground
-                    }
-                    window.statusBarColor = android.graphics.Color.rgb(
-                        (color.red * 255).toInt(),
-                        (color.green * 255).toInt(),
-                        (color.blue * 255).toInt()
-                    )
-                    val controller = androidx.core.view.WindowCompat.getInsetsController(window, view)
-                    controller.isAppearanceLightStatusBars = true
-                }
-            }
-        }
-
         // Root container — layers content, dock, and overlays
+        // NO Scaffold — true edge-to-edge: content draws behind system bars
         Box(modifier = Modifier.fillMaxSize()) {
 
-            // Layer 1: Main content scaffold (no bottomBar — dock is an overlay)
-            Scaffold(
-                containerColor = BookParchmentBg,
-                modifier = Modifier.fillMaxSize()
-            ) { innerPadding ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding)
-                ) {
-                    // Main visual tabs routing — keep tabs alive during article overlay
-                    AnimatedContent(
-                        targetState = currentTab,
-                        transitionSpec = {
-                            val springSpec = spring<IntOffset>(dampingRatio = 0.85f, stiffness = 350f)
-                            val isForward = targetState.ordinal > initialState.ordinal
-                            if (isForward) {
-                                // Push: new screen slides in from trailing side
-                                val enter = slideInHorizontally(animationSpec = springSpec) { w -> w / 2 } + fadeIn(tween(220))
-                                val exit = slideOutHorizontally(animationSpec = springSpec) { w -> -w / 4 } + fadeOut(tween(180))
-                                enter togetherWith exit
-                            } else {
-                                // Pop: new screen slides in from leading side
-                                val enter = slideInHorizontally(animationSpec = springSpec) { w -> -w / 4 } + fadeIn(tween(220))
-                                val exit = slideOutHorizontally(animationSpec = springSpec) { w -> w / 2 } + fadeOut(tween(180))
-                                enter togetherWith exit
-                            }
-                        },
-                        label = "tab_transitions"
-                    ) { targetTab ->
-                        when (targetTab) {
-                            AppTab.HOME -> HomeTabScreen(viewModel = viewModel)
-                            AppTab.AI -> AiTabScreen(viewModel = viewModel)
-                            AppTab.SETTINGS -> SettingsTabScreen()
-                        }
+            // Layer 1: Tab content — renders edge-to-edge (each tab handles its own insets)
+            AnimatedContent(
+                targetState = currentTab,
+                transitionSpec = {
+                    val springSpec = spring<IntOffset>(dampingRatio = 0.85f, stiffness = 350f)
+                    val isForward = targetState.ordinal > initialState.ordinal
+                    if (isForward) {
+                        // Push: new screen slides in from trailing side
+                        val enter = slideInHorizontally(animationSpec = springSpec) { w -> w / 2 } + fadeIn(tween(220))
+                        val exit = slideOutHorizontally(animationSpec = springSpec) { w -> -w / 4 } + fadeOut(tween(180))
+                        enter togetherWith exit
+                    } else {
+                        // Pop: new screen slides in from leading side
+                        val enter = slideInHorizontally(animationSpec = springSpec) { w -> -w / 4 } + fadeIn(tween(220))
+                        val exit = slideOutHorizontally(animationSpec = springSpec) { w -> w / 2 } + fadeOut(tween(180))
+                        enter togetherWith exit
                     }
+                },
+                label = "tab_transitions"
+            ) { targetTab ->
+                when (targetTab) {
+                    AppTab.HOME -> HomeTabScreen(viewModel = viewModel)
+                    AppTab.AI -> AiTabScreen(viewModel = viewModel)
+                    AppTab.SETTINGS -> SettingsTabScreen()
                 }
             }
 
-            // Layer 2: Floating dock — true overlay above content (not in scaffold)
+            // Layer 2: Floating dock — true overlay, no layout reservation
             val showDock = !androidx.compose.foundation.layout.WindowInsets.isImeVisible
                     && activeArticle == null
                     && currentTab != AppTab.AI
@@ -164,7 +131,7 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
                 )
             }
 
-            // Layer 3: AI back button — overlay above everything
+            // Layer 3: AI back button — overlay above everything, respects status bar
             AnimatedVisibility(
                 visible = currentTab == AppTab.AI && activeArticle == null,
                 enter = fadeIn(tween(250)) + scaleIn(
@@ -177,7 +144,8 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
                 ),
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(top = 8.dp, start = 8.dp)
+                    .statusBarsPadding()
+                    .padding(top = 6.dp, start = 8.dp)
             ) {
                 Box(
                     modifier = Modifier
@@ -239,6 +207,7 @@ fun HomeTabScreen(viewModel: FeqhViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .statusBarsPadding()
             .background(IosBackground)
     ) {
         // Title row: "الموسوعة الفقهية" on the right, view mode button on the left
@@ -1198,7 +1167,6 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .background(IosBackground)
-            .navigationBarsPadding()
             .imePadding()
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -1263,9 +1231,25 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                         }
                     }
                 }
+                }
             }
+
+            // Bottom fade gradient (Telegram-style) — gradually fades content into composer area
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(100.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                IosBackground.copy(alpha = 0f),
+                                IosBackground
+                            )
+                        )
+                    )
+            )
         }
-    }
 
         // ── Scroll-to-Bottom Floating Button ──
         AnimatedVisibility(
@@ -1274,7 +1258,7 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
             exit = fadeOut() + scaleOut(),
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 24.dp, bottom = 80.dp)
+                .padding(end = 24.dp, bottom = 130.dp)
         ) {
             Box(
                 modifier = Modifier
@@ -1305,7 +1289,9 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
-                .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+                .padding(start = 16.dp, end = 16.dp)
+                .navigationBarsPadding()
+                .padding(bottom = 8.dp)
         ) {
             Card(
                 shape = RoundedCornerShape(28.dp),
@@ -1801,6 +1787,7 @@ fun SettingsTabScreen() {
         modifier = Modifier
             .fillMaxSize()
             .background(IosBackground)
+            .statusBarsPadding()
             .padding(top = 24.dp)
     ) {
         Text(

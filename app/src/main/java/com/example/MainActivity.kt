@@ -42,6 +42,11 @@ class MainActivity : ComponentActivity() {
         
         enableEdgeToEdge()
         
+        // Ensure system bars are transparent for true edge-to-edge
+        window.setStatusBarColor(android.graphics.Color.TRANSPARENT)
+        window.setNavigationBarColor(android.graphics.Color.TRANSPARENT)
+        window.decorView.systemUiVisibility = 0 // Clear any forced light/dark
+        
         setContent {
             var fontErrorMsg by remember { mutableStateOf<String?>(null) }
             
