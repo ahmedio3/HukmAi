@@ -1231,8 +1231,6 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                         }
                     }
                 }
-                }
-            }
 
             // Bottom fade gradient (Telegram-style) — gradually fades content into composer area
             Box(
@@ -1479,6 +1477,8 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
             }
         }
     }
+}
+}
 }
 
 @Composable
