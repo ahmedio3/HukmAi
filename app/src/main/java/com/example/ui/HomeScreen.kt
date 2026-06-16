@@ -104,75 +104,120 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
             }
         }
 
-        Scaffold(
-            bottomBar = {
-                val showDock = !androidx.compose.foundation.layout.WindowInsets.isImeVisible
-                        && activeArticle == null
-                        && currentTab != AppTab.AI
-                AnimatedVisibility(
-                    visible = showDock,
-                    enter = fadeIn() + slideInVertically(initialOffsetY = { it }),
-                    exit = fadeOut() + slideOutVertically(targetOffsetY = { it }),
-                    modifier = Modifier.fillMaxWidth()
+        // Root container — layers content, dock, and overlays
+        Box(modifier = Modifier.fillMaxSize()) {
+
+            // Layer 1: Main content scaffold (no bottomBar — dock is an overlay)
+            Scaffold(
+                containerColor = BookParchmentBg,
+                modifier = Modifier.fillMaxSize()
+            ) { innerPadding ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
                 ) {
-                    ElegantBottomBar(
-                        currentTab = currentTab,
-                        onTabSelected = { viewModel.setTab(it) }
-                    )
-                }
-            },
-            containerColor = BookParchmentBg,
-            modifier = Modifier.fillMaxSize()
-        ) { innerPadding ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-            ) {
-                // Main visual tabs routing — keep tabs alive during article overlay
-                AnimatedContent(
-                    targetState = currentTab,
-                    transitionSpec = {
-                        val springSpec = spring<IntOffset>(dampingRatio = 0.85f, stiffness = 350f)
-                        when {
-                            initialState == AppTab.HOME && targetState == AppTab.AI -> {
+                    // Main visual tabs routing — keep tabs alive during article overlay
+                    AnimatedContent(
+                        targetState = currentTab,
+                        transitionSpec = {
+                            val springSpec = spring<IntOffset>(dampingRatio = 0.85f, stiffness = 350f)
+                            val isForward = targetState.ordinal > initialState.ordinal
+                            if (isForward) {
+                                // Push: new screen slides in from trailing side
                                 val enter = slideInHorizontally(animationSpec = springSpec) { w -> w / 2 } + fadeIn(tween(220))
                                 val exit = slideOutHorizontally(animationSpec = springSpec) { w -> -w / 4 } + fadeOut(tween(180))
                                 enter togetherWith exit
-                            }
-                            initialState == AppTab.AI && targetState != AppTab.AI -> {
+                            } else {
+                                // Pop: new screen slides in from leading side
                                 val enter = slideInHorizontally(animationSpec = springSpec) { w -> -w / 4 } + fadeIn(tween(220))
                                 val exit = slideOutHorizontally(animationSpec = springSpec) { w -> w / 2 } + fadeOut(tween(180))
                                 enter togetherWith exit
                             }
-                            else -> {
-                                fadeIn(tween(200)) togetherWith fadeOut(tween(200))
-                            }
+                        },
+                        label = "tab_transitions"
+                    ) { targetTab ->
+                        when (targetTab) {
+                            AppTab.HOME -> HomeTabScreen(viewModel = viewModel)
+                            AppTab.AI -> AiTabScreen(viewModel = viewModel)
+                            AppTab.SETTINGS -> SettingsTabScreen()
                         }
-                    },
-                    label = "tab_transitions"
-                ) { targetTab ->
-                    when (targetTab) {
-                        AppTab.HOME -> HomeTabScreen(viewModel = viewModel)
-                        AppTab.AI -> AiTabScreen(viewModel = viewModel)
-                        AppTab.SETTINGS -> SettingsTabScreen()
                     }
                 }
             }
-        }
 
-        // Foreground overlay layer for Article Viewer Screen - FULLSCREEN, above scaffold
-        AnimatedVisibility(
-            visible = activeArticle != null,
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            activeArticle?.let { article ->
-                ArticleViewerScreen(
-                    article = article,
-                    onClose = { viewModel.closeArticle() }
+            // Layer 2: Floating dock — true overlay above content (not in scaffold)
+            val showDock = !androidx.compose.foundation.layout.WindowInsets.isImeVisible
+                    && activeArticle == null
+                    && currentTab != AppTab.AI
+            AnimatedVisibility(
+                visible = showDock,
+                enter = fadeIn() + slideInVertically(initialOffsetY = { it }),
+                exit = fadeOut() + slideOutVertically(targetOffsetY = { it }),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+            ) {
+                ElegantBottomBar(
+                    currentTab = currentTab,
+                    onTabSelected = { viewModel.setTab(it) }
                 )
+            }
+
+            // Layer 3: AI back button — overlay above everything
+            AnimatedVisibility(
+                visible = currentTab == AppTab.AI && activeArticle == null,
+                enter = fadeIn(tween(250)) + scaleIn(
+                    initialScale = 0.8f,
+                    animationSpec = spring(dampingRatio = 0.7f, stiffness = 400f)
+                ),
+                exit = fadeOut(tween(200)) + scaleOut(
+                    targetScale = 0.8f,
+                    animationSpec = tween(200)
+                ),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(top = 8.dp, start = 8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(IosSurface.copy(alpha = 0.9f), CircleShape)
+                        .border(
+                            width = 0.5.dp,
+                            color = Color(0xFFC8C8CC).copy(alpha = 0.4f),
+                            shape = CircleShape
+                        )
+                        .shadow(4.dp, CircleShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { viewModel.setTab(AppTab.HOME) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = "العودة للموسوعة",
+                        tint = Color(0xFF007AFF),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            // Layer 4: Article viewer — top-most overlay
+            AnimatedVisibility(
+                visible = activeArticle != null,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                activeArticle?.let { article ->
+                    ArticleViewerScreen(
+                        article = article,
+                        onClose = { viewModel.closeArticle() }
+                    )
+                }
             }
         }
     }
@@ -1156,47 +1201,6 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
             .navigationBarsPadding()
             .imePadding()
     ) {
-        // Floating back button — top-start corner (top-right in RTL)
-        AnimatedVisibility(
-            visible = true,
-            enter = fadeIn(animationSpec = tween(250)) + scaleIn(
-                initialScale = 0.8f,
-                animationSpec = spring(dampingRatio = 0.7f, stiffness = 400f)
-            ),
-            exit = fadeOut(animationSpec = tween(200)) + scaleOut(
-                targetScale = 0.8f,
-                animationSpec = tween(200)
-            ),
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(top = 8.dp, start = 8.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(IosSurface.copy(alpha = 0.9f), CircleShape)
-                    .border(
-                        width = 0.5.dp,
-                        color = Color(0xFFC8C8CC).copy(alpha = 0.4f),
-                        shape = CircleShape
-                    )
-                    .shadow(4.dp, CircleShape)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { viewModel.setTab(AppTab.HOME) },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = "العودة للموسوعة",
-                    tint = Color(0xFF007AFF),
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-        }
-
         Column(modifier = Modifier.fillMaxSize()) {
             // Messages area — fills all space above input
             Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -2330,37 +2334,32 @@ fun ElegantBottomBar(
     currentTab: AppTab,
     onTabSelected: (AppTab) -> Unit,
 ) {
-    // Glass-like capsule dock — compact, floating above content
-    Box(
+    // Truly floating iOS-style capsule dock — no parent container
+    Row(
         modifier = Modifier
-            .fillMaxWidth()
+            .widthIn(min = 0.dp, max = 240.dp)
+            .height(48.dp)
             .navigationBarsPadding()
-            .padding(bottom = 8.dp),
-        contentAlignment = Alignment.Center
+            .padding(bottom = 12.dp)
+            .background(
+                color = IosSurface.copy(alpha = 0.88f),
+                shape = RoundedCornerShape(24.dp)
+            )
+            .border(
+                width = 0.5.dp,
+                color = Color(0xFFC8C8CC).copy(alpha = 0.4f),
+                shape = RoundedCornerShape(24.dp)
+            )
+            .shadow(
+                elevation = 10.dp,
+                shape = RoundedCornerShape(24.dp),
+                ambientColor = Color.Black.copy(alpha = 0.1f),
+                spotColor = Color.Black.copy(alpha = 0.15f)
+            )
+            .padding(horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceEvenly
     ) {
-        Row(
-            modifier = Modifier
-                .widthIn(min = 0.dp, max = 240.dp)
-                .height(48.dp)
-                .background(
-                    color = IosSurface.copy(alpha = 0.85f),
-                    shape = RoundedCornerShape(24.dp)
-                )
-                .border(
-                    width = 0.5.dp,
-                    color = Color(0xFFC8C8CC).copy(alpha = 0.4f),
-                    shape = RoundedCornerShape(24.dp)
-                )
-                .shadow(
-                    elevation = 8.dp,
-                    shape = RoundedCornerShape(24.dp),
-                    ambientColor = Color.Black.copy(alpha = 0.08f),
-                    spotColor = Color.Black.copy(alpha = 0.12f)
-                )
-                .padding(horizontal = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
             // Home
             DockIcon(
                 icon = if (currentTab == AppTab.HOME) Icons.Default.MenuBook else Icons.Outlined.MenuBook,
@@ -2389,7 +2388,6 @@ fun ElegantBottomBar(
                 onClick = { onTabSelected(AppTab.SETTINGS) }
             )
         }
-    }
 }
 
 @Composable
