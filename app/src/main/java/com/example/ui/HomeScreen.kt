@@ -84,7 +84,11 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
 
         // Root container — layers content, dock, and overlays
         // NO Scaffold — true edge-to-edge: content draws behind system bars
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(IosBackground)
+        ) {
 
             // Layer 1: Tab content — iOS-style push/pop slide transitions
             AnimatedContent(
@@ -198,8 +202,8 @@ fun HomeTabScreen(viewModel: FeqhViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .statusBarsPadding()
             .background(IosBackground)
+            .statusBarsPadding()
     ) {
         // Title row: "الموسوعة الفقهية" on the right, view mode button on the left
         Row(
@@ -1223,18 +1227,21 @@ fun AiTabScreen(viewModel: com.example.viewmodel.FeqhViewModel) {
                     }
                 }
 
-            // Bottom fade gradient (Telegram-style) — gradually fades content into composer area
+            // Bottom fade gradient (Telegram-style) — strong gradual fade into composer
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(100.dp)
+                    .height(130.dp)
                     .align(Alignment.BottomCenter)
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
                                 IosBackground.copy(alpha = 0f),
+                                IosBackground.copy(alpha = 0.45f),
                                 IosBackground
-                            )
+                            ),
+                            startY = 0f,
+                            endY = Float.POSITIVE_INFINITY
                         )
                     )
             )

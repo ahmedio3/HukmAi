@@ -40,14 +40,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        enableEdgeToEdge()
+                enableEdgeToEdge()
 
-        // Status bar: light gray matching app background with dark icons
-        window.setStatusBarColor(android.graphics.Color.parseColor("#F2F2F7"))
+        // True transparent system bars for seamless edge-to-edge rendering
+        window.setStatusBarColor(android.graphics.Color.TRANSPARENT)
+        window.setNavigationBarColor(android.graphics.Color.TRANSPARENT)
         androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = true
-
-        // Navigation bar: light gray matching app background
-        window.setNavigationBarColor(android.graphics.Color.parseColor("#F2F2F7"))
         
         setContent {
             var fontErrorMsg by remember { mutableStateOf<String?>(null) }
