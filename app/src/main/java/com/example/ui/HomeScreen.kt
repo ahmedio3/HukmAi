@@ -2335,48 +2335,51 @@ fun ElegantBottomBar(
     currentTab: AppTab,
     onTabSelected: (AppTab) -> Unit,
 ) {
-    // Compact iOS-inspired floating pill — centered, narrow, perfectly proportioned
+    // Compact iOS native floating tab bar capsule — perfectly proportioned
     Row(
         modifier = Modifier
-            .widthIn(min = 0.dp, max = 160.dp)
-            .height(54.dp)
+            .widthIn(min = 0.dp, max = 175.dp)
+            .height(56.dp)
             .navigationBarsPadding()
-            .padding(bottom = 8.dp)
+            .padding(bottom = 12.dp)
             .background(
-                color = IosSurface.copy(alpha = 0.94f),
-                shape = RoundedCornerShape(27.dp)
+                color = Color.White.copy(alpha = 0.95f),
+                shape = RoundedCornerShape(28.dp)
             )
             .border(
                 width = 0.5.dp,
-                color = Color(0xFFC8C8CC).copy(alpha = 0.25f),
-                shape = RoundedCornerShape(27.dp)
+                color = Color(0xFF3C3C43).copy(alpha = 0.12f),
+                shape = RoundedCornerShape(28.dp)
             )
             .shadow(
-                elevation = 8.dp,
-                shape = RoundedCornerShape(27.dp),
-                ambientColor = Color.Black.copy(alpha = 0.05f),
-                spotColor = Color.Black.copy(alpha = 0.08f)
+                elevation = 12.dp,
+                shape = RoundedCornerShape(28.dp),
+                ambientColor = Color.Black.copy(alpha = 0.03f),
+                spotColor = Color.Black.copy(alpha = 0.06f)
             )
-            .padding(horizontal = 6.dp),
+            .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
+        // Right: Home (RTL order - first in Row is right side)
         DockIcon(
-            icon = if (currentTab == AppTab.HOME) Icons.Default.MenuBook else Icons.Outlined.MenuBook,
+            icon = if (currentTab == AppTab.HOME) Icons.Filled.Home else Icons.Outlined.Home,
             contentDescription = "الموسوعة",
             isSelected = currentTab == AppTab.HOME,
             onClick = { onTabSelected(AppTab.HOME) }
         )
 
+        // Center: Search (replaces AI icon)
         DockIcon(
-            icon = if (currentTab == AppTab.AI) Icons.Default.AutoAwesome else Icons.Outlined.AutoAwesome,
+            icon = if (currentTab == AppTab.AI) Icons.Filled.Search else Icons.Outlined.Search,
             contentDescription = "الذكاء الاصطناعي",
             isSelected = currentTab == AppTab.AI,
             onClick = { onTabSelected(AppTab.AI) }
         )
 
+        // Left: Settings
         DockIcon(
-            icon = if (currentTab == AppTab.SETTINGS) Icons.Default.Settings else Icons.Outlined.Settings,
+            icon = if (currentTab == AppTab.SETTINGS) Icons.Filled.Settings else Icons.Outlined.Settings,
             contentDescription = "الإعدادات",
             isSelected = currentTab == AppTab.SETTINGS,
             onClick = { onTabSelected(AppTab.SETTINGS) }
@@ -2393,10 +2396,10 @@ private fun DockIcon(
 ) {
     Box(
         modifier = Modifier
-            .size(38.dp)
+            .size(40.dp)
             .clip(CircleShape)
             .then(
-                if (isSelected) Modifier.background(IslamicDeepGreen.copy(alpha = 0.14f))
+                if (isSelected) Modifier.background(Color(0xFF3C3C43).copy(alpha = 0.08f))
                 else Modifier
             )
             .clickable(
@@ -2408,8 +2411,8 @@ private fun DockIcon(
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
-            tint = if (isSelected) IslamicDeepGreen else IosTextSecondary,
-            modifier = Modifier.size(22.dp)
+            tint = if (isSelected) Color(0xFF1C1C1E) else Color(0xFF8E8E93),
+            modifier = Modifier.size(24.dp)
         )
     }
 }
