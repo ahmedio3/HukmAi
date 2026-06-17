@@ -2335,33 +2335,28 @@ fun ElegantBottomBar(
     currentTab: AppTab,
     onTabSelected: (AppTab) -> Unit,
 ) {
-    // Compact iOS native floating tab bar capsule — perfectly proportioned
+    // Exact visual match of the reference capsule dock — centered, beautifully rounded, clean white
     Row(
         modifier = Modifier
             .widthIn(min = 0.dp, max = 175.dp)
-            .height(56.dp)
+            .height(58.dp)
             .navigationBarsPadding()
             .padding(bottom = 12.dp)
             .background(
-                color = Color.White.copy(alpha = 0.95f),
-                shape = RoundedCornerShape(28.dp)
-            )
-            .border(
-                width = 0.5.dp,
-                color = Color(0xFF3C3C43).copy(alpha = 0.12f),
-                shape = RoundedCornerShape(28.dp)
+                color = Color.White,
+                shape = RoundedCornerShape(29.dp)
             )
             .shadow(
-                elevation = 12.dp,
-                shape = RoundedCornerShape(28.dp),
-                ambientColor = Color.Black.copy(alpha = 0.03f),
-                spotColor = Color.Black.copy(alpha = 0.06f)
+                elevation = 14.dp,
+                shape = RoundedCornerShape(29.dp),
+                ambientColor = Color.Black.copy(alpha = 0.04f),
+                spotColor = Color.Black.copy(alpha = 0.08f)
             )
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
-        // Right: Home (RTL order - first in Row is right side)
+        // Right Tab (RTL order): Home
         DockIcon(
             icon = if (currentTab == AppTab.HOME) Icons.Filled.Home else Icons.Outlined.Home,
             contentDescription = "الموسوعة",
@@ -2369,7 +2364,7 @@ fun ElegantBottomBar(
             onClick = { onTabSelected(AppTab.HOME) }
         )
 
-        // Center: Search (replaces AI icon)
+        // Center Tab: Search (Replacing AI)
         DockIcon(
             icon = if (currentTab == AppTab.AI) Icons.Filled.Search else Icons.Outlined.Search,
             contentDescription = "الذكاء الاصطناعي",
@@ -2377,9 +2372,9 @@ fun ElegantBottomBar(
             onClick = { onTabSelected(AppTab.AI) }
         )
 
-        // Left: Settings
+        // Left Tab: Archive / Box (representing settings exactly like the reference image)
         DockIcon(
-            icon = if (currentTab == AppTab.SETTINGS) Icons.Filled.Settings else Icons.Outlined.Settings,
+            icon = if (currentTab == AppTab.SETTINGS) Icons.Filled.Archive else Icons.Outlined.Archive,
             contentDescription = "الإعدادات",
             isSelected = currentTab == AppTab.SETTINGS,
             onClick = { onTabSelected(AppTab.SETTINGS) }
@@ -2396,7 +2391,7 @@ private fun DockIcon(
 ) {
     Box(
         modifier = Modifier
-            .size(40.dp)
+            .size(42.dp)
             .clip(CircleShape)
             .then(
                 if (isSelected) Modifier.background(Color(0xFF3C3C43).copy(alpha = 0.08f))
@@ -2412,7 +2407,7 @@ private fun DockIcon(
             imageVector = icon,
             contentDescription = contentDescription,
             tint = if (isSelected) Color(0xFF1C1C1E) else Color(0xFF8E8E93),
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(26.dp)
         )
     }
 }
