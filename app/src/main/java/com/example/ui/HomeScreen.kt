@@ -2328,40 +2328,39 @@ private fun extractSummarySection(text: String): Pair<String?, String> {
 }
 
 // ==========================================
-// COMPACT FLOATING iOS-STYLE NAVIGATION DOCK
+// iOS-STYLE FLOATING NAVIGATION DOCK
 // ==========================================
 @Composable
 fun ElegantBottomBar(
     currentTab: AppTab,
     onTabSelected: (AppTab) -> Unit,
 ) {
-    // Truly floating iOS-style capsule dock — taller, narrower, more premium
+    // Compact iOS-inspired floating pill — centered, narrow, perfectly proportioned
     Row(
         modifier = Modifier
-            .widthIn(min = 0.dp, max = 210.dp)
-            .height(56.dp)
+            .widthIn(min = 0.dp, max = 160.dp)
+            .height(54.dp)
             .navigationBarsPadding()
-            .padding(bottom = 12.dp)
+            .padding(bottom = 8.dp)
             .background(
-                color = IosSurface,
-                shape = RoundedCornerShape(28.dp)
+                color = IosSurface.copy(alpha = 0.94f),
+                shape = RoundedCornerShape(27.dp)
             )
             .border(
                 width = 0.5.dp,
-                color = Color(0xFFC8C8CC).copy(alpha = 0.35f),
-                shape = RoundedCornerShape(28.dp)
+                color = Color(0xFFC8C8CC).copy(alpha = 0.25f),
+                shape = RoundedCornerShape(27.dp)
             )
             .shadow(
-                elevation = 12.dp,
-                shape = RoundedCornerShape(28.dp),
-                ambientColor = Color.Black.copy(alpha = 0.08f),
-                spotColor = Color.Black.copy(alpha = 0.12f)
+                elevation = 8.dp,
+                shape = RoundedCornerShape(27.dp),
+                ambientColor = Color.Black.copy(alpha = 0.05f),
+                spotColor = Color.Black.copy(alpha = 0.08f)
             )
-            .padding(horizontal = 10.dp),
+            .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = Arrangement.SpaceEvenly
     ) {
-        // Home
         DockIcon(
             icon = if (currentTab == AppTab.HOME) Icons.Default.MenuBook else Icons.Outlined.MenuBook,
             contentDescription = "الموسوعة",
@@ -2369,7 +2368,6 @@ fun ElegantBottomBar(
             onClick = { onTabSelected(AppTab.HOME) }
         )
 
-        // AI
         DockIcon(
             icon = if (currentTab == AppTab.AI) Icons.Default.AutoAwesome else Icons.Outlined.AutoAwesome,
             contentDescription = "الذكاء الاصطناعي",
@@ -2377,7 +2375,6 @@ fun ElegantBottomBar(
             onClick = { onTabSelected(AppTab.AI) }
         )
 
-        // Settings
         DockIcon(
             icon = if (currentTab == AppTab.SETTINGS) Icons.Default.Settings else Icons.Outlined.Settings,
             contentDescription = "الإعدادات",
@@ -2396,10 +2393,10 @@ private fun DockIcon(
 ) {
     Box(
         modifier = Modifier
-            .size(44.dp)
+            .size(38.dp)
             .clip(CircleShape)
             .then(
-                if (isSelected) Modifier.background(IslamicDeepGreen.copy(alpha = 0.12f))
+                if (isSelected) Modifier.background(IslamicDeepGreen.copy(alpha = 0.14f))
                 else Modifier
             )
             .clickable(
@@ -2412,7 +2409,7 @@ private fun DockIcon(
             imageVector = icon,
             contentDescription = contentDescription,
             tint = if (isSelected) IslamicDeepGreen else IosTextSecondary,
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(22.dp)
         )
     }
 }
