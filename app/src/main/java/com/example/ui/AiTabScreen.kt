@@ -225,8 +225,9 @@ fun AiTabScreen(viewModel: FeqhViewModel) {
                         )
                 )
             }
+        }
 
-            // Scroll-to-Bottom Button
+        // Scroll-to-Bottom Button
             AnimatedVisibility(
                 visible = !isNearBottom.value && chatMessages.isNotEmpty(),
                 enter = fadeIn() + scaleIn(),
@@ -402,7 +403,6 @@ fun AiTabScreen(viewModel: FeqhViewModel) {
                                 }
                             }
                         }
-                    }
                 }
             }
         }
