@@ -25,6 +25,19 @@ enum class ViewMode {
     LIST, TREE
 }
 
+enum class ThemeMode {
+    LIGHT, DARK, SYSTEM
+}
+
+enum class AccentColor(val hex: Long, val name: String) {
+    BLUE(0xFF007AFF, "أزرق"),
+    GREEN(0xFF2E5A36, "أخضر"),
+    PURPLE(0xFF5856D6, "بنفسجي"),
+    ORANGE(0xFFFF9500, "برتقالي"),
+    RED(0xFFFF3B30, "أحمر"),
+    TEAL(0xFF30B0C7, "فيروزي")
+}
+
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 class FeqhViewModel(application: Application, private val repository: FeqhRepository) : AndroidViewModel(application) {
 
@@ -134,6 +147,25 @@ class FeqhViewModel(application: Application, private val repository: FeqhReposi
         prefs.edit().putStringSet("bookmarks", next.map { it.toString() }.toSet()).apply()
     }
 
+    // ---- Theme preferences ----
+    private val _themeMode = MutableStateFlow(
+        ThemeMode.values().getOrNull(prefs.getInt("theme_mode", 2)) ?: ThemeMode.SYSTEM
+    )
+    val themeMode: StateFlow<ThemeMode> = _themeMode.asStateFlow()
+    fun setThemeMode(mode: ThemeMode) {
+        _themeMode.value = mode
+        prefs.edit().putInt("theme_mode", mode.ordinal).apply()
+    }
+
+    private val _accentColor = MutableStateFlow(
+        AccentColor.values().getOrNull(prefs.getInt("accent_color", 0)) ?: AccentColor.BLUE
+    )
+    val accentColor: StateFlow<AccentColor> = _accentColor.asStateFlow()
+    fun setAccentColor(color: AccentColor) {
+        _accentColor.value = color
+        prefs.edit().putInt("accent_color", color.ordinal).apply()
+    }
+
     private fun loadBookmarks(): Set<Int> {
         return prefs.getStringSet("bookmarks", emptySet())?.mapNotNull { it.toIntOrNull() }?.toSet() ?: emptySet()
     }
@@ -212,6 +244,16 @@ class FeqhViewModel(application: Application, private val repository: FeqhReposi
         }
     }
 
+    // ---- Cancellation: stop the running AI generation ----
+    @Volatile
+    private var aiJob: kotlinx.coroutines.Job? = null
+
+    fun stopAiGeneration() {
+        aiJob?.cancel()
+        aiJob = null
+        _aiProgress.value = com.example.data.api.AiProgress.Idle
+    }
+
     fun retryLastQuestion() {
         if (_lastUserQuestion.isNotEmpty()) {
             viewModelScope.launch {
@@ -245,7 +287,8 @@ class FeqhViewModel(application: Application, private val repository: FeqhReposi
         val trimmed = question.trim()
         if (trimmed.isEmpty()) return
 
-        viewModelScope.launch {
+        aiJob?.cancel()
+        aiJob = viewModelScope.launch {
             // 1. Save user message
             val userMsg = ChatMessage(role = "user", content = trimmed)
             repository.insertChatMessage(userMsg)

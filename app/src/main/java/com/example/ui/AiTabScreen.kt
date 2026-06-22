@@ -393,10 +393,10 @@ fun AiTabScreen(viewModel: FeqhViewModel) {
                             .padding(start = 4.dp, end = 16.dp, top = 6.dp, bottom = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Send Button (RTL = right side)
+                        // Send / Stop Button (RTL = right side)
                         val canSend = questionText.isNotBlank() && !isAiThinking
                         val scaleAnim = remember { Animatable(1f) }
-                        
+
                         Box(
                             modifier = Modifier
                                 .size(40.dp)
@@ -405,37 +405,44 @@ fun AiTabScreen(viewModel: FeqhViewModel) {
                                     scaleY = scaleAnim.value
                                 }
                                 .background(
-                                    if (canSend)
-                                        Brush.linearGradient(
+                                    when {
+                                        isAiThinking -> Brush.linearGradient(
+                                            colors = listOf(Color(0xFFFF3B30), Color(0xFFCC0000))
+                                        )
+                                        canSend -> Brush.linearGradient(
                                             colors = listOf(Color(0xFF007AFF), Color(0xFF0055CC))
                                         )
-                                    else
-                                        Brush.linearGradient(
+                                        else -> Brush.linearGradient(
                                             colors = listOf(Color(0xFFE2E2E7), Color(0xFFE2E2E7))
-                                        ),
+                                        )
+                                    },
                                     shape = CircleShape
                                 )
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = null,
-                                    enabled = canSend
+                                    enabled = canSend || isAiThinking
                                 ) {
-                                    coroutineScope.launch {
-                                        scaleAnim.snapTo(1f)
-                                        scaleAnim.animateTo(0.85f, tween(80))
-                                        scaleAnim.animateTo(1.05f, tween(100))
-                                        scaleAnim.animateTo(1f, tween(60))
+                                    if (isAiThinking) {
+                                        viewModel.stopAiGeneration()
+                                    } else {
+                                        coroutineScope.launch {
+                                            scaleAnim.snapTo(1f)
+                                            scaleAnim.animateTo(0.85f, tween(80))
+                                            scaleAnim.animateTo(1.05f, tween(100))
+                                            scaleAnim.animateTo(1f, tween(60))
+                                        }
+                                        focusManager.clearFocus()
+                                        viewModel.submitAiQuestion(questionText)
+                                        questionText = ""
                                     }
-                                    focusManager.clearFocus()
-                                    viewModel.submitAiQuestion(questionText)
-                                    questionText = ""
                                 },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                Icons.Filled.ArrowUpward,
-                                contentDescription = "إرسال",
-                                tint = if (canSend) Color.White else IosTextSecondary,
+                                imageVector = if (isAiThinking) Icons.Filled.Stop else Icons.Filled.ArrowUpward,
+                                contentDescription = if (isAiThinking) "إيقاف" else "إرسال",
+                                tint = if (isAiThinking || canSend) Color.White else IosTextSecondary,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
