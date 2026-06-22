@@ -29,7 +29,7 @@ enum class ThemeMode {
     LIGHT, DARK, SYSTEM
 }
 
-enum class AccentColor(val hex: Long, val name: String) {
+enum class AccentColor(val hex: Long, val displayName: String) {
     BLUE(0xFF007AFF, "أزرق"),
     GREEN(0xFF2E5A36, "أخضر"),
     PURPLE(0xFF5856D6, "بنفسجي"),
