@@ -647,6 +647,7 @@ fun UserChatBubble(message: String, timestamp: Long) {
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun AiChatMessage(
     message: String,

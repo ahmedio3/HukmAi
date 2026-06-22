@@ -83,6 +83,16 @@ class FeqhViewModel(application: Application, private val repository: FeqhReposi
         prefs.edit().putFloat("font_scale", (fontScale as MutableStateFlow).value).apply()
     }
 
+    fun setViewMode(mode: ViewMode) {
+        _viewMode.value = mode
+        prefs.edit().putInt("view_mode", mode.ordinal).apply()
+    }
+
+    fun toggleViewMode() {
+        val newMode = if (_viewMode.value == ViewMode.LIST) ViewMode.TREE else ViewMode.LIST
+        setViewMode(newMode)
+    }
+
     // ---- Chat State ----
     private val _aiProgress = MutableStateFlow<com.example.data.api.AiProgress>(com.example.data.api.AiProgress.Idle)
     val aiProgress: StateFlow<com.example.data.api.AiProgress> = _aiProgress.asStateFlow()
@@ -150,7 +160,7 @@ class FeqhViewModel(application: Application, private val repository: FeqhReposi
     }
 
     // ---- Last AI response cache (so the tab is not empty after a process death) ----
-    private val _lastAiResponsePreview = MutableStateFlow(prefs.getString("last_ai_preview", ""))
+    private val _lastAiResponsePreview = MutableStateFlow(prefs.getString("last_ai_preview", "") ?: "")
     val lastAiResponsePreview: StateFlow<String> = _lastAiResponsePreview.asStateFlow()
     private fun saveLastAiResponsePreview(text: String) {
         val trimmed = if (text.length > 500) text.take(500) else text
