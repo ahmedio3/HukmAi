@@ -14,9 +14,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Search
@@ -201,46 +203,41 @@ fun ElegantBottomBar(
 ) {
     Row(
         modifier = Modifier
-            .width(260.dp)
-            .height(64.dp)
+            .width(200.dp)
+            .height(56.dp)
             .background(
-                color = Color.White.copy(alpha = 0.92f),
-                shape = RoundedCornerShape(32.dp)
-            )
-            .border(
-                width = 0.5.dp,
-                color = Color.Black.copy(alpha = 0.08f),
-                shape = RoundedCornerShape(32.dp)
+                color = Color.White,
+                shape = RoundedCornerShape(28.dp)
             )
             .shadow(
-                elevation = 16.dp,
-                shape = RoundedCornerShape(32.dp),
-                ambientColor = Color.Black.copy(alpha = 0.05f),
-                spotColor = Color.Black.copy(alpha = 0.10f)
+                elevation = 12.dp,
+                shape = RoundedCornerShape(28.dp),
+                ambientColor = Color.Black.copy(alpha = 0.08f),
+                spotColor = Color.Black.copy(alpha = 0.12f)
             )
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         // Right Tab (RTL order): Home
         DockIcon(
-            icon = if (currentTab == AppTab.HOME) Icons.Filled.Home else Icons.Outlined.Home,
+            icon = Icons.Filled.Home,
             contentDescription = "الموسوعة",
             isSelected = currentTab == AppTab.HOME,
             onClick = { onTabSelected(AppTab.HOME) }
         )
 
-        // Center Tab: Search (Replacing AI)
+        // Center Tab: AI (Stars icon)
         DockIcon(
-            icon = if (currentTab == AppTab.AI) Icons.Filled.Search else Icons.Outlined.Search,
+            icon = Icons.Filled.AutoAwesome,
             contentDescription = "الذكاء الاصطناعي",
             isSelected = currentTab == AppTab.AI,
             onClick = { onTabSelected(AppTab.AI) }
         )
 
-        // Left Tab: Archive (representing settings)
+        // Left Tab: Settings
         DockIcon(
-            icon = if (currentTab == AppTab.SETTINGS) Icons.Filled.Archive else Icons.Outlined.Archive,
+            icon = Icons.Filled.Settings,
             contentDescription = "الإعدادات",
             isSelected = currentTab == AppTab.SETTINGS,
             onClick = { onTabSelected(AppTab.SETTINGS) }
@@ -256,10 +253,10 @@ private fun DockIcon(
     onClick: () -> Unit
 ) {
     val scale by animateFloatAsState(
-        targetValue = if (isSelected) 1.15f else 1.0f,
+        targetValue = if (isSelected) 1.1f else 1.0f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
+            stiffness = Spring.StiffnessMedium
         ),
         label = "dock_icon_scale"
     )
@@ -267,7 +264,7 @@ private fun DockIcon(
 
     Box(
         modifier = Modifier
-            .size(48.dp)
+            .size(44.dp)
             .clip(CircleShape)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -284,31 +281,13 @@ private fun DockIcon(
             },
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                tint = if (isSelected) Color(0xFF007AFF) else Color(0xFF8E8E93),
-                modifier = Modifier
-                    .size(24.dp)
-                    .graphicsLayer(scaleX = scale, scaleY = scale)
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            // Animated indicator dot
-            AnimatedVisibility(
-                visible = isSelected,
-                enter = fadeIn() + scaleIn(),
-                exit = fadeOut() + scaleOut()
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(4.dp)
-                        .background(Color(0xFF007AFF), CircleShape)
-                )
-            }
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = Color.Black,
+            modifier = Modifier
+                .size(28.dp)
+                .graphicsLayer(scaleX = scale, scaleY = scale)
+        )
     }
 }
