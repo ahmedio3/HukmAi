@@ -1,5 +1,7 @@
 package com.example.ui
 
+import android.os.Build
+import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -28,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.example.ui.theme.*
@@ -79,7 +82,7 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
                 when (targetTab) {
                     AppTab.HOME -> HomeTabScreen(viewModel = viewModel)
                     AppTab.AI -> AiTabScreen(viewModel = viewModel)
-                    AppTab.SETTINGS -> SettingsTabScreen()
+                    AppTab.SETTINGS -> SettingsTabScreen(viewModel = viewModel)
                 }
             }
 
@@ -154,7 +157,8 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
                 activeArticle?.let { article ->
                     ArticleViewerScreen(
                         article = article,
-                        onClose = { viewModel.closeArticle() }
+                        onClose = { viewModel.closeArticle() },
+                        viewModel = viewModel
                     )
                 }
             }
@@ -231,6 +235,7 @@ private fun DockIcon(
         ),
         label = "dock_icon_scale"
     )
+    val view = LocalView.current
 
     Box(
         modifier = Modifier
@@ -239,7 +244,16 @@ private fun DockIcon(
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
-            ) { onClick() },
+            ) {
+                // Haptic feedback for tactile feel
+                view.performHapticFeedback(
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+                        HapticFeedbackConstants.CONFIRM
+                    else
+                        HapticFeedbackConstants.VIRTUAL_KEY
+                )
+                onClick()
+            },
         contentAlignment = Alignment.Center
     ) {
         Column(

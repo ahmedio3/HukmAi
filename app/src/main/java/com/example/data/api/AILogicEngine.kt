@@ -3,6 +3,8 @@ package com.example.data.api
 import com.example.BuildConfig
 import com.example.data.model.Article
 import com.example.data.model.TreeNode
+import com.example.util.AppLogger
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import com.squareup.moshi.Moshi
@@ -217,18 +219,12 @@ class AILogicEngine(
             contents = listOf(Content(parts = listOf(Part(text = prompt)))),
             generationConfig = GenerationConfig(responseMimeType = "application/json", temperature = 0.2f)
         )
-        // Try Main Router Key
-        var responseText = executeGeminiCall(model, BuildConfig.API_KEY_ROUTER_MAIN, request)
-        if (responseText == null && BuildConfig.API_KEY_ROUTER_FALLBACK.isNotEmpty()) {
-            // Try Fallback
-            responseText = executeGeminiCall(model, BuildConfig.API_KEY_ROUTER_FALLBACK, request)
-        }
+        val responseText = callWithFallback(model, request)
         if (responseText == null) return null
-        
         return try {
             adapter.fromJson(responseText)
         } catch (e: Exception) {
-            e.printStackTrace()
+            AppLogger.e("Gemini", "Failed to parse JSON response: $responseText", e)
             null
         }
     }
@@ -239,7 +235,12 @@ class AILogicEngine(
             contents = listOf(Content(parts = listOf(Part(text = prompt)))),
             generationConfig = GenerationConfig(temperature = 0.3f)
         )
-        return executeGeminiCall(model, BuildConfig.API_KEY_ANSWER, request)
+        // Main + fallback key with retry
+        var responseText = executeGeminiCallWithRetry(model, BuildConfig.API_KEY_ANSWER, request)
+        if (responseText == null && BuildConfig.API_KEY_ROUTER_FALLBACK.isNotEmpty()) {
+            responseText = executeGeminiCallWithRetry(model, BuildConfig.API_KEY_ROUTER_FALLBACK, request)
+        }
+        return responseText
     }
 
     private suspend fun executeGeminiCall(model: String, key: String, request: GenerateContentRequest): String? {
@@ -248,8 +249,48 @@ class AILogicEngine(
             val response = RetrofitClient.service.generateContent(model, key, request)
             response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
         } catch (e: Exception) {
-            e.printStackTrace()
+            AppLogger.e("Gemini", "executeGeminiCall failed for model=$model", e)
             null
         }
+    }
+
+    /**
+     * Execute a Gemini call with automatic retry on transient failures.
+     * Uses exponential backoff: 500ms → 1s → 2s (max 3 attempts).
+     */
+    private suspend fun executeGeminiCallWithRetry(
+        model: String,
+        key: String,
+        request: GenerateContentRequest,
+        maxAttempts: Int = 3
+    ): String? {
+        if (key.isEmpty()) return null
+        var attempt = 0
+        var backoffMs = 500L
+        while (attempt < maxAttempts) {
+            attempt++
+            val result = executeGeminiCall(model, key, request)
+            if (result != null) return result
+            if (attempt < maxAttempts) {
+                AppLogger.w("Gemini", "Retry $attempt/$maxAttempts after ${backoffMs}ms")
+                delay(backoffMs)
+                backoffMs *= 2
+            }
+        }
+        return null
+    }
+
+    /**
+     * Try main then fallback API key, with retries on each.
+     */
+    private suspend fun callWithFallback(
+        model: String,
+        request: GenerateContentRequest
+    ): String? {
+        var responseText = executeGeminiCallWithRetry(model, BuildConfig.API_KEY_ROUTER_MAIN, request)
+        if (responseText == null && BuildConfig.API_KEY_ROUTER_FALLBACK.isNotEmpty()) {
+            responseText = executeGeminiCallWithRetry(model, BuildConfig.API_KEY_ROUTER_FALLBACK, request)
+        }
+        return responseText
     }
 }

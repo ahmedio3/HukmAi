@@ -9,11 +9,15 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.Description
@@ -32,6 +36,7 @@ import com.example.data.model.TreeNode
 import com.example.ui.theme.*
 import com.example.viewmodel.FeqhViewModel
 import com.example.viewmodel.ViewMode
+import kotlinx.coroutines.launch
 
 @Composable
 fun HomeTabScreen(viewModel: FeqhViewModel) {
@@ -204,10 +209,84 @@ fun HomeTabScreen(viewModel: FeqhViewModel) {
         } else {
             if (isLoading) {
                 SkeletonLoadingView()
-            } else if (viewMode == ViewMode.TREE) {
-                CategoryTreeView(viewModel = viewModel)
             } else {
-                CategoryHierarchyView(viewModel = viewModel)
+                // Quick action row: random article + recently viewed
+                val recentIds by viewModel.recentlyViewedIds.collectAsState()
+                if (recentIds.isNotEmpty() || true) {  // always show this row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Random article
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = IosSurface,
+                            shadowElevation = 1.dp,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { viewModel.openRandomArticle() }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Shuffle,
+                                    contentDescription = null,
+                                    tint = Color(0xFF007AFF),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "مقال عشوائي",
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        color = IosTextPrimary,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                )
+                            }
+                        }
+                        // Last opened
+                        if (recentIds.isNotEmpty()) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = IosSurface,
+                                shadowElevation = 1.dp,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { viewModel.openArticle(recentIds.first()) }
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.History,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFF9500),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "آخر مقال",
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            color = IosTextPrimary,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (viewMode == ViewMode.TREE) {
+                    CategoryTreeView(viewModel = viewModel)
+                } else {
+                    CategoryHierarchyView(viewModel = viewModel)
+                }
             }
         }
     }
@@ -367,6 +446,15 @@ fun CategoryItemCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+        }
+        // Small dot for leaf articles
+        if (node.articleId != null) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .background(IslamicDeepGreen, CircleShape)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
         }
         Icon(
             imageVector = Icons.Filled.KeyboardArrowLeft,

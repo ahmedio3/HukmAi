@@ -10,6 +10,7 @@ import com.example.data.model.Article
 import com.example.data.model.ChatMessage
 import com.example.data.model.TreeNode
 import com.example.data.repository.FeqhRepository
+import com.example.util.AppLogger
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.*
@@ -75,24 +76,32 @@ class FeqhViewModel(application: Application, private val repository: FeqhReposi
     )
     val viewMode: StateFlow<ViewMode> = _viewMode.asStateFlow()
 
-    fun toggleViewMode() {
-        val newMode = if (_viewMode.value == ViewMode.LIST) ViewMode.TREE else ViewMode.LIST
-        _viewMode.value = newMode
-        prefs.edit().putInt("view_mode", newMode.ordinal).apply()
+    // Persisted font scale for article viewer (0.8f..1.4f)
+    val fontScale: StateFlow<Float> = MutableStateFlow(prefs.getFloat("font_scale", 1.0f))
+    fun setFontScale(value: Float) {
+        (fontScale as MutableStateFlow).value = value.coerceIn(0.8f, 1.4f)
+        prefs.edit().putFloat("font_scale", (fontScale as MutableStateFlow).value).apply()
     }
-
-    fun setViewMode(mode: ViewMode) {
-        _viewMode.value = mode
-        prefs.edit().putInt("view_mode", mode.ordinal).apply()
-    }
-
-    private val aiLogicEngine = com.example.data.api.AILogicEngine(repository)
 
     // ---- Chat State ----
     private val _aiProgress = MutableStateFlow<com.example.data.api.AiProgress>(com.example.data.api.AiProgress.Idle)
     val aiProgress: StateFlow<com.example.data.api.AiProgress> = _aiProgress.asStateFlow()
 
+    // Deduplicate consecutive messages with same role/content (defensive)
     val chatMessages: StateFlow<List<ChatMessage>> = repository.getAllChatMessages()
+        .map { list ->
+            if (list.isEmpty()) emptyList() else {
+                val result = mutableListOf<ChatMessage>()
+                var prev: ChatMessage? = null
+                for (msg in list) {
+                    if (prev == null || prev!!.content != msg.content || prev!!.role != msg.role) {
+                        result.add(msg)
+                    }
+                    prev = msg
+                }
+                result
+            }
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Store last user question for retry
@@ -103,6 +112,51 @@ class FeqhViewModel(application: Application, private val repository: FeqhReposi
     val aiScrollIndex: StateFlow<Int> = _aiScrollIndex.asStateFlow()
     private val _aiScrollOffset = MutableStateFlow(0)
     val aiScrollOffset: StateFlow<Int> = _aiScrollOffset.asStateFlow()
+
+    // ---- Bookmarks (favorites) ----
+    private val _bookmarkedIds = MutableStateFlow(loadBookmarks())
+    val bookmarkedIds: StateFlow<Set<Int>> = _bookmarkedIds.asStateFlow()
+    fun isBookmarked(id: Int?): Boolean = id != null && id in _bookmarkedIds.value
+    fun toggleBookmark(id: Int?) {
+        if (id == null) return
+        val next = if (id in _bookmarkedIds.value) _bookmarkedIds.value - id else _bookmarkedIds.value + id
+        _bookmarkedIds.value = next
+        prefs.edit().putStringSet("bookmarks", next.map { it.toString() }.toSet()).apply()
+    }
+
+    private fun loadBookmarks(): Set<Int> {
+        return prefs.getStringSet("bookmarks", emptySet())?.mapNotNull { it.toIntOrNull() }?.toSet() ?: emptySet()
+    }
+
+    // ---- Recently viewed articles ----
+    private val _recentlyViewedIds = MutableStateFlow(loadRecent())
+    val recentlyViewedIds: StateFlow<List<Int>> = _recentlyViewedIds.asStateFlow()
+
+    private fun loadRecent(): List<Int> {
+        return prefs.getString("recently_viewed", "")?.split(',')?.mapNotNull { it.toIntOrNull() } ?: emptyList()
+    }
+
+    private fun saveRecent(ids: List<Int>) {
+        prefs.edit().putString("recently_viewed", ids.joinToString(",")).apply()
+    }
+
+    private fun pushRecent(articleId: Int) {
+        val list = _recentlyViewedIds.value.toMutableList()
+        list.remove(articleId)
+        list.add(0, articleId)
+        val trimmed = list.take(20)
+        _recentlyViewedIds.value = trimmed
+        saveRecent(trimmed)
+    }
+
+    // ---- Last AI response cache (so the tab is not empty after a process death) ----
+    private val _lastAiResponsePreview = MutableStateFlow(prefs.getString("last_ai_preview", ""))
+    val lastAiResponsePreview: StateFlow<String> = _lastAiResponsePreview.asStateFlow()
+    private fun saveLastAiResponsePreview(text: String) {
+        val trimmed = if (text.length > 500) text.take(500) else text
+        _lastAiResponsePreview.value = trimmed
+        prefs.edit().putString("last_ai_preview", trimmed).apply()
+    }
 
     fun saveAiScrollPosition(index: Int, offset: Int) {
         _aiScrollIndex.value = index
@@ -116,6 +170,8 @@ class FeqhViewModel(application: Application, private val repository: FeqhReposi
     fun clearChat() {
         viewModelScope.launch {
             repository.deleteAllChatMessages()
+            _lastAiResponsePreview.value = ""
+            prefs.edit().remove("last_ai_preview").apply()
         }
     }
 
@@ -136,6 +192,7 @@ class FeqhViewModel(application: Application, private val repository: FeqhReposi
             }
             if (ids.isNotEmpty()) repository.getArticlesByIds(ids) else emptyList()
         } catch (e: Exception) {
+            AppLogger.e("ViewModel", "loadSourcesFromJson failed", e)
             emptyList()
         }
     }
@@ -170,6 +227,7 @@ class FeqhViewModel(application: Application, private val repository: FeqhReposi
                             sourcesJson = sourcesJson
                         )
                         repository.insertChatMessage(aiMsg)
+                        saveLastAiResponsePreview(progress.text)
                         _aiProgress.value = com.example.data.api.AiProgress.Idle
                     }
                     is com.example.data.api.AiProgress.Error -> {
@@ -208,6 +266,22 @@ class FeqhViewModel(application: Application, private val repository: FeqhReposi
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
+
+    // All leaf articles (for "random article" feature)
+    private val _allLeafArticles = MutableStateFlow<List<Article>>(emptyList())
+    fun allLeafArticles(): StateFlow<List<Article>> {
+        viewModelScope.launch {
+            try {
+                val articles = repository.search("")  // Empty returns nothing — needs separate query
+                _allLeafArticles.value = articles
+            } catch (e: Exception) {
+                AppLogger.e("ViewModel", "allLeafArticles fetch failed", e)
+            }
+        }
+        return _allLeafArticles
+    }
+
+    private val aiLogicEngine = com.example.data.api.AILogicEngine(repository)
 
     init {
         // Collect search flow with standard debounce to shield search operations
@@ -255,7 +329,7 @@ class FeqhViewModel(application: Application, private val repository: FeqhReposi
             val results = repository.search(trimmed)
             _searchResults.value = results
         } catch (e: Exception) {
-            e.printStackTrace()
+            AppLogger.e("ViewModel", "search failed for query=$query", e)
         } finally {
             _searchLoading.value = false
         }
@@ -293,11 +367,23 @@ class FeqhViewModel(application: Application, private val repository: FeqhReposi
         viewModelScope.launch {
             val article = repository.getArticleById(articleId)
             _activeArticle.value = article
+            if (article != null) {
+                pushRecent(articleId)
+            }
         }
     }
 
     fun closeArticle() {
         _activeArticle.value = null
+    }
+
+    fun openRandomArticle() {
+        viewModelScope.launch {
+            val searchResults = repository.search("ال")  // common Arabic particle to get many hits
+            val pick = searchResults.firstOrNull { it.title != null && it.text != null }
+                ?: searchResults.firstOrNull()
+            if (pick != null) openArticle(pick.id)
+        }
     }
 
     @Suppress("UNCHECKED_CAST")

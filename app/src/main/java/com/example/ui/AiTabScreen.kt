@@ -1,9 +1,13 @@
 package com.example.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,9 +16,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,20 +32,23 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.api.AiProgress
 import com.example.data.model.Article
 import com.example.ui.theme.*
+import com.example.util.extractSummarySection
+import com.example.util.parseAiResponse
 import com.example.viewmodel.FeqhViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -70,6 +82,7 @@ fun AiTabScreen(viewModel: FeqhViewModel) {
     val chatMessages by viewModel.chatMessages.collectAsStateWithLifecycle()
     var showSourcesSheet by remember { mutableStateOf(false) }
     var sourcesForSheet by remember { mutableStateOf<List<Article>>(emptyList()) }
+    var showClearDialog by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val savedIndex = viewModel.aiScrollIndex.collectAsState().value
     val savedOffset = viewModel.aiScrollOffset.collectAsState().value
@@ -79,6 +92,10 @@ fun AiTabScreen(viewModel: FeqhViewModel) {
     )
     val isAiThinking = aiProgress !is AiProgress.Idle
     val coroutineScope = rememberCoroutineScope()
+    val ctx = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    val charCount = questionText.length
+    val maxChars = 2000
 
     // Save scroll position to ViewModel for tab-switch persistence
     LaunchedEffect(Unit) {
@@ -138,24 +155,105 @@ fun AiTabScreen(viewModel: FeqhViewModel) {
                             Icons.Default.AutoAwesome,
                             contentDescription = null,
                             tint = Color(0xFF007AFF),
-                            modifier = Modifier.size(64.dp)
+                            modifier = Modifier.size(72.dp)
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(20.dp))
                         Text(
-                            text = "اسأل المفتي الذكي أي سؤال فقهي،\nوسيجيبك بالاعتماد على الموسوعة الفقهية فقط.",
+                            text = "مرحباً، أنا مفتيك الذكي",
                             textAlign = TextAlign.Center,
-                            style = MaterialTheme.typography.bodyLarge.copy(color = IosTextSecondary)
+                            style = MaterialTheme.typography.headlineSmall.copy(
+                                color = IosTextPrimary,
+                                fontWeight = FontWeight.Bold
+                            )
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "اسأل أي سؤال فقهي وستجد إجابتك من بطون كتب الفقه المعتمدة على المذاهب الأربعة. اضغط على أيقونة المصادر في الإجابة لمطالعة المراجع.",
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodyMedium.copy(color = IosTextSecondary),
+                            modifier = Modifier.padding(horizontal = 24.dp)
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        // Suggested prompts
+                        listOf(
+                            "ما حكم قراءة القرآن للحائض؟",
+                            "كيفية الوضوء بشكل صحيح؟",
+                            "شروط الزكاة في المال",
+                            "أحكام صلاة الجماعة"
+                        ).forEach { prompt ->
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = IosSurface,
+                                shadowElevation = 1.dp,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 24.dp, vertical = 4.dp)
+                                    .clickable { questionText = prompt }
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AutoAwesome,
+                                        contentDescription = null,
+                                        tint = Color(0xFF007AFF),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = prompt,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            color = IosTextPrimary
+                                        )
+                                    )
+                                }
+                            }
+                        }
                     }
                 } else {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 12.dp),
-                        contentPadding = PaddingValues(top = 85.dp, bottom = 96.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // Top toolbar with clear button
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "${chatMessages.count { it.role == "user" }} سؤال",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    color = IosTextSecondary
+                                )
+                            )
+                            TextButton(
+                                onClick = { showClearDialog = true },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.DeleteSweep,
+                                    contentDescription = null,
+                                    tint = IosTextSecondary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "مسح المحادثة",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        color = IosTextSecondary
+                                    )
+                                )
+                            }
+                        }
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 12.dp),
+                            contentPadding = PaddingValues(top = 16.dp, bottom = 96.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                         itemsIndexed(chatMessages) { index, msg ->
                             if (msg.role == "user") {
                                 UserChatBubble(
@@ -187,6 +285,7 @@ fun AiTabScreen(viewModel: FeqhViewModel) {
                                 AiThinkingIndicator(progress = aiProgress)
                             }
                         }
+                    }
                     }
                 }
 
@@ -269,6 +368,19 @@ fun AiTabScreen(viewModel: FeqhViewModel) {
                     .navigationBarsPadding()
                     .padding(bottom = 8.dp)
             ) {
+                // Character count indicator (shown only when typing or near limit)
+                if (charCount > 200 || questionText.isNotEmpty()) {
+                    Text(
+                        text = "$charCount / $maxChars",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = if (charCount > maxChars) Color(0xFFFF3B30) else IosTextSecondary,
+                            fontSize = 10.sp
+                        ),
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 2.dp, end = 8.dp)
+                    )
+                }
                 Card(
                     shape = RoundedCornerShape(28.dp),
                     elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
@@ -343,6 +455,16 @@ fun AiTabScreen(viewModel: FeqhViewModel) {
                                     .fillMaxWidth()
                                     .heightIn(min = 32.dp, max = 100.dp),
                                 maxLines = 5,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                                keyboardActions = KeyboardActions(
+                                    onSend = {
+                                        if (canSend) {
+                                            focusManager.clearFocus()
+                                            viewModel.submitAiQuestion(questionText)
+                                            questionText = ""
+                                        }
+                                    }
+                                ),
                                 decorationBox = { innerTextField ->
                                     if (questionText.isEmpty()) {
                                         Text(
@@ -405,6 +527,35 @@ fun AiTabScreen(viewModel: FeqhViewModel) {
                         }
                 }
             }
+        }
+
+        // Clear conversation confirmation
+        if (showClearDialog) {
+            AlertDialog(
+                onDismissRequest = { showClearDialog = false },
+                title = { Text("مسح المحادثة؟", color = IosTextPrimary, fontWeight = FontWeight.Bold) },
+                text = {
+                    Text(
+                        "سيتم حذف جميع الرسائل نهائياً. لا يمكن التراجع عن هذا الإجراء.",
+                        color = IosTextPrimary
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showClearDialog = false
+                        viewModel.clearChat()
+                    }) {
+                        Text("مسح", color = Color(0xFFFF3B30), fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showClearDialog = false }) {
+                        Text("إلغاء", color = Color(0xFF007AFF))
+                    }
+                },
+                containerColor = IosSurface,
+                shape = RoundedCornerShape(14.dp)
+            )
         }
 
         // Sources Bottom Sheet
@@ -506,9 +657,22 @@ fun AiChatMessage(
     onRetry: () -> Unit
 ) {
     val timeText = remember(timestamp) { formatTimestamp(timestamp) }
+    val ctx = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    var copyFeedback by remember { mutableStateOf(false) }
 
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {},
+                onLongClick = {
+                    clipboard.setText(AnnotatedString(message))
+                    copyFeedback = true
+                }
+            ),
         horizontalAlignment = Alignment.Start // AI on left side (RTL start)
     ) {
         if (isError) {
@@ -659,12 +823,45 @@ fun AiChatMessage(
             }
         }
 
-        Text(
-            text = timeText,
-            color = Color(0xFFC7C7CC),
-            fontSize = 11.sp,
-            modifier = Modifier.padding(start = 4.dp, top = 4.dp)
-        )
+        Row(
+            modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = timeText,
+                color = Color(0xFFC7C7CC),
+                fontSize = 11.sp
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            // Copy button
+            IconButton(
+                onClick = {
+                    clipboard.setText(AnnotatedString(message))
+                    copyFeedback = true
+                },
+                modifier = Modifier.size(22.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.ContentCopy,
+                    contentDescription = "نسخ",
+                    tint = if (copyFeedback) Color(0xFF34C759) else Color(0xFFC7C7CC),
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+            if (copyFeedback) {
+                LaunchedEffect(Unit) {
+                    delay(1500)
+                    copyFeedback = false
+                }
+                Text(
+                    text = "تم النسخ ✓",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        color = Color(0xFF34C759),
+                        fontSize = 10.sp
+                    )
+                )
+            }
+        }
     }
 }
 
@@ -740,80 +937,3 @@ fun AiThinkingIndicator(progress: AiProgress) {
     }
 }
 
-private fun parseAiResponse(text: String): AnnotatedString {
-    return buildAnnotatedString {
-        var i = 0
-        while (i < text.length) {
-            if (text.startsWith("**", i)) {
-                val end = text.indexOf("**", i + 2)
-                if (end != -1) {
-                    val content = text.substring(i + 2, end)
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
-                        pushStringAnnotation("bold", content)
-                        append(content)
-                        pop()
-                    }
-                    i = end + 2
-                    continue
-                }
-            }
-            if (text.startsWith("((", i)) {
-                val end = text.indexOf("))", i + 2)
-                if (end != -1) {
-                    val content = text.substring(i + 2, end)
-                    withStyle(SpanStyle(color = Color(0xFF007AFF), fontWeight = FontWeight.Medium)) {
-                        pushStringAnnotation("hadith", content)
-                        append(content)
-                        pop()
-                    }
-                    i = end + 2
-                    continue
-                }
-            }
-            if (text.startsWith("\uFDF0", i)) {
-                val end = text.indexOf("\uFDF1", i + 1)
-                if (end != -1) {
-                    val content = text.substring(i + 1, end)
-                    withStyle(SpanStyle(color = Color(0xFFD32F2F), fontWeight = FontWeight.Medium)) {
-                        pushStringAnnotation("quran", content)
-                        append(content)
-                        pop()
-                    }
-                    i = end + 1
-                    continue
-                }
-            }
-            if (text.startsWith("££", i)) {
-                val end = text.indexOf("££", i + 2)
-                if (end != -1) {
-                    val content = text.substring(i + 2, end)
-                    withStyle(SpanStyle(color = Color(0xFF8E8E93))) {
-                        pushStringAnnotation("citation", content)
-                        append(content)
-                        pop()
-                    }
-                    i = end + 2
-                    continue
-                }
-            }
-            append(text[i])
-            i++
-        }
-    }
-}
-
-private fun extractSummarySection(text: String): Pair<String?, String> {
-    val marker = "§§"
-    val startIndex = text.indexOf(marker)
-    if (startIndex == -1) return Pair(null, text)
-
-    val contentStart = startIndex + marker.length
-    val endIndex = text.indexOf(marker, contentStart)
-    if (endIndex == -1) return Pair(null, text)
-
-    val summary = text.substring(contentStart, endIndex).trim()
-    if (summary.isEmpty()) return Pair(null, text)
-
-    val remaining = (text.substring(0, startIndex) + text.substring(endIndex + marker.length)).trim()
-    return Pair(summary, remaining)
-}

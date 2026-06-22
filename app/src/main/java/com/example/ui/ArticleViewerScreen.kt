@@ -1,22 +1,28 @@
 package com.example.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -24,122 +30,30 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.Article
 import com.example.ui.theme.*
-
-sealed class HtmlElement {
-    data class Title1(val text: String) : HtmlElement()
-    data class Title2(val text: String) : HtmlElement()
-    data class RichParagraph(val parts: List<RichPart>) : HtmlElement()
-    data class Footnote(val num: Int, val text: String) : HtmlElement()
-}
-
-sealed class RichPart {
-    data class Text(val text: String) : RichPart()
-    data class Aaya(val text: String) : RichPart()
-    data class Hadith(val text: String) : RichPart()
-}
-
-fun parseHtmlToElements(html: String): List<HtmlElement> {
-    if (html.isEmpty()) return emptyList()
-    var footnoteCounter = 0
-
-    val list = mutableListOf<HtmlElement>()
-    val lines = html.split(Regex("<br\\s*/?>"))
-
-    val spanRegex = Regex(
-        """<span class="(title-1|title-2|aaya|hadith|tip)">(.*?)</span>""",
-        RegexOption.DOT_MATCHES_ALL
-    )
-    val otherSpanRegex = Regex("""<span[^>]*>.*?</span>""", RegexOption.DOT_MATCHES_ALL)
-
-    for (line in lines) {
-        val trimmed = line.trim()
-        if (trimmed.isEmpty()) continue
-
-        // Check if this line has a title
-        val titleMatch = spanRegex.find(trimmed)
-        if (titleMatch != null) {
-            val className = titleMatch.groupValues[1]
-            val rawContent = titleMatch.groupValues[2].trim()
-            val content = rawContent.replace(Regex("<[^>]*>"), "").trim()
-            if (className == "title-1" && content.isNotEmpty()) {
-                list.add(HtmlElement.Title1(content)); continue
-            }
-            if (className == "title-2" && content.isNotEmpty()) {
-                list.add(HtmlElement.Title2(content)); continue
-            }
-        }
-
-        // First pass: collect tip footnotes from this line
-        val lineFootnotes = mutableListOf<String>()
-        for (match in spanRegex.findAll(trimmed)) {
-            if (match.groupValues[1] == "tip") {
-                val tipText = match.groupValues[2].replace(Regex("<[^>]*>"), "").trim()
-                if (tipText.isNotEmpty()) {
-                    footnoteCounter++
-                    lineFootnotes.add(tipText)
-                }
-            }
-        }
-
-        // Build rich paragraph EXCLUDING tip text
-        val parts = mutableListOf<RichPart>()
-        var lastEnd = 0
-
-        for (match in spanRegex.findAll(trimmed)) {
-            val className = match.groupValues[1]
-            if (className == "aaya" || className == "hadith") {
-                val before = trimmed.substring(lastEnd, match.range.first).trim()
-                if (before.isNotEmpty()) {
-                    val cleanBefore = before.replace(otherSpanRegex, "").replace(Regex("<[^>]*>"), "").trim()
-                    if (cleanBefore.isNotEmpty()) parts.add(RichPart.Text(cleanBefore))
-                }
-                val content = match.groupValues[2].replace(Regex("<[^>]*>"), "").trim()
-                if (content.isNotEmpty()) {
-                    parts.add(if (className == "aaya") RichPart.Aaya("﴿ $content ﴾") else RichPart.Hadith("« $content »"))
-                }
-                lastEnd = match.range.last + 1
-            } else if (className == "tip") {
-                val before = trimmed.substring(lastEnd, match.range.first).trim()
-                if (before.isNotEmpty()) {
-                    val cleanBefore = before.replace(otherSpanRegex, "").replace(Regex("<[^>]*>"), "").trim()
-                    if (cleanBefore.isNotEmpty()) parts.add(RichPart.Text(cleanBefore))
-                }
-                lastEnd = match.range.last + 1
-            }
-        }
-
-        val after = trimmed.substring(lastEnd).trim()
-        if (after.isNotEmpty()) {
-            val cleanAfter = after.replace(otherSpanRegex, "").replace(Regex("<[^>]*>"), "").trim()
-            if (cleanAfter.isNotEmpty()) parts.add(RichPart.Text(cleanAfter))
-        }
-
-        if (parts.isNotEmpty()) {
-            list.add(HtmlElement.RichParagraph(parts))
-        }
-        // Add footnotes right after the paragraph
-        if (lineFootnotes.isNotEmpty()) {
-            lineFootnotes.forEachIndexed { fnIdx, text ->
-                list.add(HtmlElement.Footnote(footnoteCounter - lineFootnotes.size + fnIdx + 1, text))
-            }
-        }
-    }
-
-    if (list.isEmpty()) {
-        list.add(HtmlElement.RichParagraph(listOf(RichPart.Text(html.replace(Regex("<[^>]*>"), "")))))
-    }
-
-    return list
-}
+import com.example.util.HtmlElement
+import com.example.util.countWords
+import com.example.util.estimateReadingTimeMinutes
+import com.example.util.parseHtmlToElements
+import com.example.viewmodel.FeqhViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArticleViewerScreen(
     article: Article,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    viewModel: FeqhViewModel
 ) {
     val items = remember(article.html) { parseHtmlToElements(article.html ?: "") }
+    val plainText = remember(article.text) { article.text ?: "" }
+    val wordCount = remember(plainText) { countWords(plainText) }
+    val readMinutes = remember(plainText) { estimateReadingTimeMinutes(plainText) }
     var selectedFootnote by remember { mutableStateOf<Pair<Int, String>?>(null) }
+    val ctx = LocalContext.current
+    val fontScale by viewModel.fontScale.collectAsState()
+    val isBookmarked by remember(article.id) {
+        derivedStateOf { viewModel.isBookmarked(article.id) }
+    }
+    val listState = rememberLazyListState()
 
     Box(
         modifier = Modifier
@@ -159,6 +73,7 @@ fun ArticleViewerScreen(
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
+                        .clip(CircleShape)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
@@ -167,7 +82,7 @@ fun ArticleViewerScreen(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
+                        contentDescription = "رجوع",
                         tint = Color(0xFF007AFF),
                         modifier = Modifier.size(22.dp)
                     )
@@ -180,24 +95,81 @@ fun ArticleViewerScreen(
                         )
                     )
                 }
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                // Bookmark toggle
+                IconButton(
+                    onClick = { viewModel.toggleBookmark(article.id) },
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isBookmarked) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                        contentDescription = if (isBookmarked) "إزالة الإشارة المرجعية" else "إضافة إشارة مرجعية",
+                        tint = if (isBookmarked) Color(0xFFFFB300) else IosTextSecondary
+                    )
+                }
+                // Share button
+                IconButton(
+                    onClick = {
+                        val text = buildString {
+                            appendLine(article.title ?: "")
+                            appendLine()
+                            appendLine(plainText.take(800))
+                        }
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, article.title ?: "")
+                            putExtra(Intent.EXTRA_TEXT, text)
+                        }
+                        ctx.startActivity(Intent.createChooser(intent, "مشاركة"))
+                    },
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Share,
+                        contentDescription = "مشاركة",
+                        tint = IosTextSecondary
+                    )
+                }
+            }
+
+            // Article header — title, word count, read time
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(IosSurface)
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+            ) {
                 Text(
                     text = article.title ?: "",
-                    style = MaterialTheme.typography.titleMedium.copy(
+                    style = MaterialTheme.typography.headlineSmall.copy(
                         color = IosTextPrimary,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+                        fontSize = 22.sp
+                    )
                 )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "⏱ $readMinutes د قراءة",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            color = IosTextSecondary
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "• $wordCount كلمة",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            color = IosTextSecondary
+                        )
+                    )
+                }
             }
 
             HorizontalDivider(color = IosSeparator, thickness = 0.5.dp)
 
             // Article Content Flow body
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 20.dp, vertical = 12.dp),
@@ -231,7 +203,7 @@ fun ArticleViewerScreen(
                             )
                         }
                         is HtmlElement.RichParagraph -> {
-                            RichParagraphView(parts = el.parts)
+                            RichParagraphView(parts = el.parts, fontScale = fontScale)
                         }
                         is HtmlElement.Footnote -> {
                             FootnoteView(
@@ -282,25 +254,28 @@ fun ArticleViewerScreen(
 }
 
 @Composable
-private fun RichParagraphView(parts: List<RichPart>) {
+private fun RichParagraphView(parts: List<com.example.util.RichPart>, fontScale: Float) {
     val annotatedText = remember(parts) {
-        buildAnnotatedString {
-            parts.forEach { part ->
-                when (part) {
-                    is RichPart.Text -> {
-                        pushStyle(SpanStyle(color = IosTextPrimary))
-                        append(part.text)
-                        pop()
-                    }
-                    is RichPart.Aaya -> {
-                        pushStyle(SpanStyle(color = IslamicDeepGreen, fontWeight = FontWeight.Medium))
-                        append(part.text)
-                        pop()
-                    }
-                    is RichPart.Hadith -> {
-                        pushStyle(SpanStyle(color = Color(0xFF007AFF), fontWeight = FontWeight.Medium))
-                        append(part.text)
-                        pop()
+        com.example.util.parseAiResponse("",) // dummy to ensure import
+        com.example.ui.theme.IosTextPrimary.let { _ ->
+            androidx.compose.ui.text.buildAnnotatedString {
+                parts.forEach { part ->
+                    when (part) {
+                        is com.example.util.RichPart.Text -> {
+                            pushStyle(androidx.compose.ui.text.SpanStyle(color = IosTextPrimary))
+                            append(part.text)
+                            pop()
+                        }
+                        is com.example.util.RichPart.Aaya -> {
+                            pushStyle(androidx.compose.ui.text.SpanStyle(color = IslamicDeepGreen, fontWeight = FontWeight.Medium))
+                            append(part.text)
+                            pop()
+                        }
+                        is com.example.util.RichPart.Hadith -> {
+                            pushStyle(androidx.compose.ui.text.SpanStyle(color = Color(0xFF007AFF), fontWeight = FontWeight.Medium))
+                            append(part.text)
+                            pop()
+                        }
                     }
                 }
             }
@@ -310,11 +285,16 @@ private fun RichParagraphView(parts: List<RichPart>) {
     Text(
         text = annotatedText,
         style = MaterialTheme.typography.bodyMedium.copy(
-            fontSize = 15.sp,
-            lineHeight = 24.sp,
+            fontSize = (15 * fontScale).sp,
+            lineHeight = (24 * fontScale).sp,
             textAlign = TextAlign.Justify
         ),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { /* could be used for selection later */ }
     )
 }
 
