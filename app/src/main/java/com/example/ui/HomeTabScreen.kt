@@ -52,7 +52,7 @@ fun HomeTabScreen(viewModel: FeqhViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .background(IosBackground)
-            .statusBarsPadding()
+            .systemBarsPadding()
     ) {
         // Title row: "الموسوعة الفقهية" on the right, view mode button on the left
         Row(

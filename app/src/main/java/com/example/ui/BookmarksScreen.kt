@@ -70,7 +70,7 @@ fun BookmarksScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(IosSurface)
-                    .statusBarsPadding()
+                    .systemBarsPadding()
                     .padding(vertical = 8.dp, horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {

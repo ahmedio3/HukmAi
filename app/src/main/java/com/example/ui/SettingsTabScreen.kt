@@ -48,7 +48,7 @@ fun SettingsTabScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(IosBackground)
-            .statusBarsPadding()
+            .systemBarsPadding()
             .padding(top = 24.dp)
     ) {
         Text(
