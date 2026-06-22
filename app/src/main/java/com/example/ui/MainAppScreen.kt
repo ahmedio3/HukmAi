@@ -44,6 +44,8 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
     val activeArticle by viewModel.activeArticle.collectAsState()
     val categoryStack by viewModel.categoryStack.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
+    var showBookmarks by remember { mutableStateOf(false) }
+    var showRandomArticleLoading by remember { mutableStateOf(false) }
 
     // Enforce full RTL layout direction matching requested Sharia design guidelines
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
@@ -55,6 +57,8 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
             BackHandler { viewModel.popCategory() }
         } else if (isSearching) {
             BackHandler { viewModel.clearSearch() }
+        } else if (showBookmarks) {
+            BackHandler { showBookmarks = false }
         }
 
         // Root container — layers content, dock, and overlays
@@ -64,17 +68,21 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
                 .background(IosBackground)
         ) {
 
-            // Layer 1: Tab content — iOS-style push/pop slide transitions
+            // Layer 1: Tab content — REVERSED iOS-style push/pop slide
+            // Forward (Home → Settings): Settings enters from RIGHT, Home slides LEFT
+            // Back (Settings → Home): Home enters from LEFT, Settings slides RIGHT
             AnimatedContent(
                 targetState = currentTab,
                 transitionSpec = {
                     val isForward = targetState.ordinal > initialState.ordinal
                     if (isForward) {
-                        (slideInHorizontally(tween(350)) { w -> w } + fadeIn(tween(250)))
-                            .togetherWith(slideOutHorizontally(tween(350)) { w -> -w / 3 } + fadeOut(tween(200)))
+                        // Push: new screen slides in from RIGHT, old exits LEFT
+                        (slideInHorizontally(tween(350)) { w -> -w } + fadeIn(tween(250)))
+                            .togetherWith(slideOutHorizontally(tween(350)) { w -> w / 3 } + fadeOut(tween(200)))
                     } else {
-                        (slideInHorizontally(tween(350)) { w -> -w / 3 } + fadeIn(tween(250)))
-                            .togetherWith(slideOutHorizontally(tween(350)) { w -> w } + fadeOut(tween(200)))
+                        // Pop: new screen slides in from LEFT, old exits RIGHT
+                        (slideInHorizontally(tween(350)) { w -> w / 3 } + fadeIn(tween(250)))
+                            .togetherWith(slideOutHorizontally(tween(350)) { w -> -w } + fadeOut(tween(200)))
                     }
                 },
                 label = "tab_transitions"
@@ -82,7 +90,10 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
                 when (targetTab) {
                     AppTab.HOME -> HomeTabScreen(viewModel = viewModel)
                     AppTab.AI -> AiTabScreen(viewModel = viewModel)
-                    AppTab.SETTINGS -> SettingsTabScreen(viewModel = viewModel)
+                    AppTab.SETTINGS -> SettingsTabScreen(
+                        viewModel = viewModel,
+                        onShowBookmarks = { showBookmarks = true }
+                    )
                 }
             }
 
@@ -161,6 +172,23 @@ fun MainAppScreen(viewModel: FeqhViewModel) {
                         viewModel = viewModel
                     )
                 }
+            }
+
+            // Layer 5: Bookmarks screen — opens from Settings
+            AnimatedVisibility(
+                visible = showBookmarks,
+                enter = slideInHorizontally(tween(350)) { w -> -w } + fadeIn(tween(250)),
+                exit = slideOutHorizontally(tween(350)) { w -> -w } + fadeOut(tween(200)),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                BookmarksScreen(
+                    viewModel = viewModel,
+                    onClose = { showBookmarks = false },
+                    onArticleClick = { id ->
+                        showBookmarks = false
+                        viewModel.openArticle(id)
+                    }
+                )
             }
         }
     }

@@ -146,6 +146,33 @@ class FeqhViewModel(application: Application, private val repository: FeqhReposi
         return prefs.getString("recently_viewed", "")?.split(',')?.mapNotNull { it.toIntOrNull() } ?: emptyList()
     }
 
+    // ---- Per-article scroll position persistence ----
+    private val articleScrollIndex = mutableMapOf<Int, Int>()
+    private val articleScrollOffset = mutableMapOf<Int, Int>()
+
+    fun getArticleScrollIndex(articleId: Int): Int {
+        if (articleId !in articleScrollIndex) {
+            articleScrollIndex[articleId] = prefs.getInt("art_scroll_$articleId", 0)
+        }
+        return articleScrollIndex[articleId] ?: 0
+    }
+
+    fun getArticleScrollOffset(articleId: Int): Int {
+        if (articleId !in articleScrollOffset) {
+            articleScrollOffset[articleId] = prefs.getInt("art_scroll_offset_$articleId", 0)
+        }
+        return articleScrollOffset[articleId] ?: 0
+    }
+
+    fun saveArticleScroll(articleId: Int, index: Int, offset: Int) {
+        articleScrollIndex[articleId] = index
+        articleScrollOffset[articleId] = offset
+        prefs.edit()
+            .putInt("art_scroll_$articleId", index)
+            .putInt("art_scroll_offset_$articleId", offset)
+            .apply()
+    }
+
     private fun saveRecent(ids: List<Int>) {
         prefs.edit().putString("recently_viewed", ids.joinToString(",")).apply()
     }
@@ -382,6 +409,8 @@ class FeqhViewModel(application: Application, private val repository: FeqhReposi
             }
         }
     }
+
+    suspend fun getArticleByIdSync(articleId: Int): Article? = repository.getArticleById(articleId)
 
     fun closeArticle() {
         _activeArticle.value = null

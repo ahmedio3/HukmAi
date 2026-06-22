@@ -34,13 +34,15 @@ import com.example.viewmodel.FeqhViewModel
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsTabScreen(viewModel: FeqhViewModel) {
+fun SettingsTabScreen(
+    viewModel: FeqhViewModel,
+    onShowBookmarks: () -> Unit = {}
+) {
     val fontScale by viewModel.fontScale.collectAsState()
     val bookmarkedIds by viewModel.bookmarkedIds.collectAsState()
     val ctx = LocalContext.current
     var showAboutDialog by remember { mutableStateOf(false) }
     var showClearCacheDialog by remember { mutableStateOf(false) }
-    var showBookmarksList by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -108,7 +110,7 @@ fun SettingsTabScreen(viewModel: FeqhViewModel) {
                             style = MaterialTheme.typography.bodyMedium.copy(color = IosTextSecondary)
                         )
                     },
-                    onClick = { showBookmarksList = true }
+                    onClick = onShowBookmarks
                 )
 
                 HorizontalDivider(color = IosSeparator, modifier = Modifier.padding(start = 56.dp))
